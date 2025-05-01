@@ -1,11 +1,12 @@
 #!/usr/bin/env bats
 
-# Setup a temporary Git repo before each test
 setup() {
-  TMPDIR="$(mktemp -d)"
+  # Create a fresh temporary Git repo
+  export TMPDIR="$(mktemp -d)"
   cd "$TMPDIR"
   git init >/dev/null
-  # create some dummy files
+
+  # Add dummy files
   printf '%s\n' '#!/usr/bin/env bash' 'echo hello' > foo.sh
   printf '%s\n' 'body text' > README.md
   printf '%s\n' 'FROM alpine' > Dockerfile
@@ -13,10 +14,30 @@ setup() {
   git add . >/dev/null
   git commit -m "initial" >/dev/null
 
-  # symlink your snapshot script into PATH
-  export PATH="$TMPDIR/bin:$PWD/../src:$PATH"
+  # Prepare a fake bin directory for stubbing
   mkdir -p bin
-  ln -s "$PWD/../src/snapshot.sh" bin/snapshot
+
+  # Symlink the snapshot script under test
+  ln -s "${BATS_TEST_DIRNAME}/../src/snapshot.sh" bin/snapshot
+
+  # Stub `tree` to simply echo each input filename
+  cat > bin/tree << 'EOF'
+#!/usr/bin/env bash
+while read -r f; do
+  echo "$f"
+done
+EOF
+  chmod +x bin/tree
+
+  # Stub `pbcopy` to capture clipboard output
+  cat > bin/pbcopy << 'EOF'
+#!/usr/bin/env bash
+cat >"$TMPDIR/clip"
+EOF
+  chmod +x bin/pbcopy
+
+  # Ensure our fake bin comes first in PATH
+  export PATH="$TMPDIR/bin:$PATH"
 }
 
 teardown() {
@@ -26,7 +47,6 @@ teardown() {
 @test "snapshot tree lists all tracked files" {
   run snapshot tree
   [ "$status" -eq 0 ]
-  # should contain our four files
   [[ "${lines[@]}" =~ "foo.sh" ]]
   [[ "${lines[@]}" =~ "README.md" ]]
   [[ "${lines[@]}" =~ "Dockerfile" ]]
@@ -36,21 +56,15 @@ teardown() {
 @test "snapshot code dumps code/config files with headers" {
   run snapshot code
   [ "$status" -eq 0 ]
-  # the header lines and contents
-  [[ "${output}" =~ "===== foo.sh =====" ]]
-  [[ "${output}" =~ "echo hello" ]]
-  [[ "${output}" =~ "===== sub/config.yml =====" ]]
-  [[ "${output}" =~ "content" ]]
+  [[ "$output" =~ "===== foo.sh =====" ]]
+  [[ "$output" =~ "echo hello" ]]
+  [[ "$output" =~ "===== sub/config.yml =====" ]]
+  [[ "$output" =~ "content" ]]
 }
 
 @test "snapshot copy sends dump to pbcopy" {
-  # stub pbcopy to capture input
-  pbcopy() { cat >"$TMPDIR/clip"; }
-  export -f pbcopy
-
   run snapshot copy
   [ "$status" -eq 0 ]
   [ -s "$TMPDIR/clip" ]
-  # ensure the clip contains a header
   grep -q "===== foo.sh =====" "$TMPDIR/clip"
 }
