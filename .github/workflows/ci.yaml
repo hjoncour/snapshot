@@ -1,0 +1,69 @@
+name: CI & Version Bump
+
+################################################################################
+# 1. Run tests for every PR (code cannot reach default branch unless green)
+################################################################################
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+  # A second trigger is needed for the version-bump logic because pushing back
+  # to the PR branch requires write access granted to the *base* repo token.
+  pull_request_target:
+    types: [opened, reopened]
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  tests:
+    name: Shell tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Run snapshot tests
+        run: bash test/test_config.sh     # adjust if you place tests elsewhere
+
+  # ────────────────────────────────────────────────────────────────────────────
+  bump-version:
+    name: Auto-increment patch version
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'pull_request_target' &&
+      !contains(github.event.pull_request.body, 'NO-BUMP')
+    permissions:
+      contents: write      # allow pushing the updated config.json
+      pull-requests: write # allow commenting, if you later want to
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump the most-minor version segment
+        id: bump
+        run: |
+          current=$(jq -r '.version' config.json)
+
+          # Split into array on dots, increment the last field
+          IFS='.' read -r -a parts <<< "$current"
+          last_index=$(( ${#parts[@]} - 1 ))
+          parts[$last_index]=$(( parts[$last_index] + 1 ))
+          new=$(IFS='.'; echo "${parts[*]}")
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+          # Write new version back to config.json
+          jq ".version = \"$new\"" config.json > cfg.tmp && mv cfg.tmp config.json
+
+      - name: Commit & push
+        run: |
+          git config user.name "snapshot-bot"
+          git config user.email "snapshot-bot@users.noreply.github.com"
+          git add config.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new }} [skip ci]"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

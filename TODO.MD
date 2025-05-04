@@ -1,0 +1,4 @@
+- Make a linux version of this      (install script)
+- Make a windows version of this    (install script)
+- Better testing
+- eventually rewrite this in rust
