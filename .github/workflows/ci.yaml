@@ -23,8 +23,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run snapshot tests
-        run: bash test/test_config.sh     # adjust if you place tests elsewhere
-
+        run: |
+          bash test/test_config.sh
+          bash test/test_ignore.sh
   # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version
