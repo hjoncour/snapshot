@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Minimal test for “snapshot --config”.
-# Run from repo root:  bash test/test_config.sh
 #
 set -euo pipefail
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --config
 
 ###############################################################################
 # 0. locate the real repo before leaving it
@@ -45,3 +45,10 @@ else
   echo "got:      $output"
   exit 1
 fi
+""")
+
+file_path = "/mnt/data/snapshot_update.txt"
+with open(file_path, "w") as f:
+    f.write(content)
+
+file_path
