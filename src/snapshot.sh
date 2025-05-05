@@ -54,16 +54,20 @@ cd "$git_root"
 tracked_files=$(git ls-files)
 
 # ---------------------------------------------------------------------------
-# Exclude files whose **basename** appears in ignore_file
+# Exclude files whose **basename** appears in ignore_file (case‑insensitive)
 # ---------------------------------------------------------------------------
 ignore_names=$(jq -r '.ignore_file[]?' "$global_cfg" 2>/dev/null || true)
+ignore_names_lower=$(printf '%s\n' $ignore_names | tr '[:upper:]' '[:lower:]')
+
 is_ignored() {
-  local base; base="$(basename "$1")"
-  [ -n "$ignore_names" ] && printf '%s\n' $ignore_names | grep -qFx -- "$base"
+  local base lcbase
+  base="$(basename "$1")"
+  lcbase=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
+  printf '%s\n' $ignore_names_lower | grep -qFx -- "$lcbase"
 }
 
 ###############################################################################
-# 3. Regex for code / config files  (single‑line to avoid grep “parentheses not balanced”)
+# 3. Regex for code / config files
 ###############################################################################
 exts='\.(sh|bash|zsh|ksh|c|cc|cpp|h|hpp|java|kt|go|rs|py|js|ts|jsx|tsx|rb|php|pl|swift|scala|dart|cs|sql|html|css|scss|md|json|ya?ml|toml|ini|cfg|conf|env|xml|gradle|mk?)$|(^|/)Dockerfile$|(^|/)docker-compose\.ya?ml$|(^|/)Makefile$'
 
@@ -79,6 +83,12 @@ dump_code() {
   done
 }
 
+filtered_for_tree() {
+  printf '%s\n' "$tracked_files" | while IFS= read -r f; do
+    is_ignored "$f" || printf '%s\n' "$f"
+  done
+}
+
 ###############################################################################
 # 5. Dispatch
 ###############################################################################
@@ -86,7 +96,7 @@ cmd="${1:-code}"
 case "$cmd" in
   tree)
     command -v tree >/dev/null 2>&1 || { echo "snapshot: error – install 'tree'."; exit 1; }
-    printf '%s\n' "$tracked_files" | grep -vFf <(printf '%s\n' $ignore_names) | tree --fromfile
+    filtered_for_tree | tree --fromfile
     ;;
 
   code) dump_code ;;

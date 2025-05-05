@@ -3,23 +3,26 @@
 # Minimal test for “snapshot --config”.
 #
 set -euo pipefail
-SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --config
 
 ###############################################################################
-# 0. locate the real repo before leaving it
+# 0. locate the real repo so we can copy snapshot.sh from it
 ###############################################################################
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
 
 ###############################################################################
-# 1. create a temporary git repo
+# 1. create a temporary git repo *and* a custom global config
 ###############################################################################
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 cd "$tmpdir"
 git init -q
 
-cat > config.json <<'EOF'
+# project‑local config (not used by --config any more, but harmless)
+echo '{}' > config.json
+
+# custom global config that snapshot should print
+cat > global.json <<'EOF'
 {"foo":"bar"}
 EOF
 
@@ -27,28 +30,19 @@ EOF
 mkdir -p src
 cp "$repo_root/src/snapshot.sh" src/snapshot.sh
 chmod +x src/snapshot.sh
-
-# Stage the files so git ls-files can see them
-git add . >/dev/null
+git add . >/dev/null   # so git ls-files works
 
 ###############################################################################
 # 2. run snapshot --config and compare output
 ###############################################################################
-output=$(bash src/snapshot.sh --config)
 expected='{"foo":"bar"}'
+output=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --config)
 
-if [ "$output" = "$expected" ]; then
-  echo "✅ snapshot --config returned config.json"
+if [[ "$output" == "$expected" ]]; then
+  echo "✅ snapshot --config returned overridden global config"
 else
   echo "❌ snapshot --config returned unexpected output"
   echo "expected: $expected"
   echo "got:      $output"
   exit 1
 fi
-""")
-
-file_path = "/mnt/data/snapshot_update.txt"
-with open(file_path, "w") as f:
-    f.write(content)
-
-file_path
