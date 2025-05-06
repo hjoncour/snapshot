@@ -1,143 +1,135 @@
 #!/usr/bin/env bash
 #
-# snapshot - quick Git‑aware project dumper / tree / clipboard / config helper
+# snapshot – Git‑aware project dumper / tree / clipboard / config helper
 #
 # USAGE
-#   snapshot tree                       # show repo structure (tracked files only)
-#   snapshot                            # dump every code / config file
-#   snapshot code                       # explicit alias of the default
-#   snapshot copy                       # dump → clipboard (macOS pbcopy)
-#   snapshot --config  | -c             # print the global config.json
-#   snapshot --ignore  | -i ITEM…       # add ITEM(s) to ignore list
-#                                         • plain names  → ignore_file
-#                                         • paths / globs → ignore_path
+#   snapshot tree                        # show repo structure
+#   snapshot                             # dump every code / config file
+#   snapshot code                        # explicit alias of the default
+#   snapshot copy                        # dump → clipboard (macOS pbcopy)
+#   snapshot --config  | -c              # show global config.json
+#   snapshot --ignore   | -i ITEM…       # add ITEM(s) to ignore list
+#   snapshot --add-type EXT …            # track additional file‑extensions
+#   snapshot --remove-type EXT …         # stop tracking given file‑extensions
 #
 set -euo pipefail
 
 ###############################################################################
-# 0. Locate global config (overridable via $SNAPSHOT_CONFIG)
+# 0. Locate global config
 ###############################################################################
-cfg_default_dir="$HOME/Library/Application Support/snapshot"
-global_cfg="${SNAPSHOT_CONFIG:-$cfg_default_dir/config.json}"
+cfg_dir="$HOME/Library/Application Support/snapshot"
+global_cfg="${SNAPSHOT_CONFIG:-$cfg_dir/config.json}"
 mkdir -p "$(dirname "$global_cfg")"
 [ -f "$global_cfg" ] || echo '{}' > "$global_cfg"
 
 ###############################################################################
-# 1. Helpers
+# 1. jq helpers
 ###############################################################################
-need_jq() {
-  command -v jq >/dev/null 2>&1 && return
-  echo "snapshot: error - '$1' requires jq (not found in PATH)." >&2
-  exit 1
-}
+need_jq() { command -v jq >/dev/null 2>&1 && return; echo "snapshot: '$1' needs jq." >&2; exit 1; }
 
 show_config() { cat "$global_cfg"; }
 
-add_ignores() {
-  need_jq "--ignore"
-  [ "$#" -gt 0 ] || { echo "snapshot: error - --ignore needs arguments." >&2; exit 2; }
+default_types=( sh bash zsh ksh c cc cpp h hpp java kt go rs py js ts jsx tsx rb php pl swift scala dart cs sql html css scss md json yaml yml toml ini cfg conf env xml gradle mk )
 
-  for item in "$@"; do
-    if [[ "$item" == */* || "$item" == *'*'* || "$item" == *'?'* || "$item" == .* ]]; then
-      jq --arg p "$item" \
-         '.ignore_path = ((.ignore_path // []) + [$p] | unique)' \
+ensure_arrays() {
+  need_jq "arrays"
+  jq --argjson defs "$(printf '%s\n' "${default_types[@]}" | jq -R . | jq -s .)" '
+    .types_tracked = (.types_tracked // $defs) |
+    .types_ignored = (.types_ignored // [])   |
+    .ignore_file   = (.ignore_file   // [])   |
+    .ignore_path   = (.ignore_path   // [])
+  ' "$global_cfg" > "$global_cfg.tmp" && mv "$global_cfg.tmp" "$global_cfg"
+}
+
+
+###############################################################################
+# 2. ignore helpers (files vs paths/globs)
+###############################################################################
+add_ignores() {
+  ensure_arrays; need_jq "--ignore"
+  [ "$#" -gt 0 ] || { echo "snapshot: --ignore needs at least one item." >&2; exit 2; }
+  for itm in "$@"; do
+    if [[ "$itm" == */* || "$itm" == *'*'* || "$itm" == *'?'* || "$itm" == .* ]]; then
+      jq --arg p "$itm" '.ignore_path += [$p] | .ignore_path |= unique' \
          "$global_cfg" > "$global_cfg.tmp" && mv "$global_cfg.tmp" "$global_cfg"
-      echo "snapshot: added '$item' to ignore_path."
+      echo "snapshot: added '$itm' to ignore_path."
     else
-      jq --arg f "$item" \
-         '.ignore_file = ((.ignore_file // []) + [$f] | unique)' \
+      jq --arg f "$itm" '.ignore_file += [$f] | .ignore_file |= unique' \
          "$global_cfg" > "$global_cfg.tmp" && mv "$global_cfg.tmp" "$global_cfg"
-      echo "snapshot: added '$item' to ignore_file."
+      echo "snapshot: added '$itm' to ignore_file."
     fi
   done
 }
 
 ###############################################################################
-# 2. Ensure we’re inside a Git repo & gather tracked files
+# 3. type helpers
+###############################################################################
+add_type()     { ensure_arrays; for e in "$@"; do e=${e#.}; e=${e,,}; jq --arg e "$e" '.types_tracked += [$e] | .types_tracked |= unique' "$global_cfg" > "$global_cfg.tmp" && mv "$global_cfg.tmp" "$global_cfg"; echo "snapshot: added type '$e'."; done; }
+remove_type()  { ensure_arrays; for e in "$@"; do e=${e#.}; e=${e,,}; jq --arg e "$e" '.types_tracked |= map(select(.!= $e))' "$global_cfg" > "$global_cfg.tmp" && mv "$global_cfg.tmp" "$global_cfg"; echo "snapshot: removed type '$e'."; done; }
+
+###############################################################################
+# 4. Git repo & tracked files
 ###############################################################################
 if ! git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-  echo "snapshot: error - not inside a Git repository." >&2
-  exit 1
-fi
+  echo "snapshot: error – not inside a Git repository." >&2; exit 1; fi
 cd "$git_root"
 tracked_files=$(git ls-files)
 
 ###############################################################################
-# 3. Build ignore lists
+# 5. Build ignore logic
 ###############################################################################
-ignore_files=$(jq -r '.ignore_file[]?' "$global_cfg" 2>/dev/null || true)
-ignore_files_lc=$(printf '%s\n' $ignore_files | tr '[:upper:]' '[:lower:]')
-ignore_paths=$(jq -r '.ignore_path[]?' "$global_cfg" 2>/dev/null || true)
-
-shopt -s extglob 2>/dev/null || true
-shopt -s globstar 2>/dev/null || true
+ensure_arrays
+ignore_file=$(jq -r '.ignore_file[]?' "$global_cfg")
+ignore_file_lc=$(printf '%s\n' $ignore_file | tr '[:upper:]' '[:lower:]')
+ignore_path=$(jq -r '.ignore_path[]?' "$global_cfg")
 
 is_ignored() {
-  local path="$1"
-  # 3‑a) basename match (case‑insensitive)
-  local base lcbase
-  base="${path##*/}"
-  lcbase=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-  if [[ -n "$ignore_files_lc" ]] && printf '%s\n' $ignore_files_lc | grep -qFx -- "$lcbase"; then
-    return 0
-  fi
-  # 3‑b) path / glob match
-  if [[ -n "$ignore_paths" ]]; then
-    while IFS= read -r pattern; do
-      [[ -z "$pattern" ]] && continue
-      [[ "$path" == $pattern ]] && return 0
-    done <<< "$ignore_paths"
+  local p="$1"
+  local base="${p##*/}"
+  local lc="${base,,}"
+  [[ -n "$ignore_file_lc" ]] && printf '%s\n' $ignore_file_lc | grep -qFx -- "$lc" && return 0
+  if [[ -n "$ignore_path" ]]; then
+    while IFS= read -r pat; do
+      [[ -z "$pat" ]] && continue
+      [[ "$p" == $pat ]] && return 0
+    done <<< "$ignore_path"
   fi
   return 1
 }
 
 ###############################################################################
-# 4. Regex for code / config files
+# 6. Build extension regex
 ###############################################################################
-exts='\.(sh|bash|zsh|ksh|c|cc|cpp|h|hpp|java|kt|go|rs|py|js|ts|jsx|tsx|rb|php|pl|swift|scala|dart|cs|sql|html|css|scss|md|json|ya?ml|toml|ini|cfg|conf|env|xml|gradle|mk?)$|(^|/)Dockerfile$|(^|/)docker-compose\.ya?ml$|(^|/)Makefile$'
+tracked_exts=$(jq -r '.types_tracked[]?' "$global_cfg" | tr '[:upper:]' '[:lower:]')
+ignored_exts=$(jq -r '.types_ignored[]?' "$global_cfg" | tr '[:upper:]' '[:lower:]')
+exts=()
+for e in $tracked_exts; do skip=0; for ig in $ignored_exts; do [[ $e == "$ig" ]] && { skip=1; break; }; done; [[ $skip -eq 0 ]] && exts+=("$e"); done
+ext_pat="\\.($(IFS='|'; echo "${exts[*]}"))$"
+static_files='(^|/)Dockerfile$|(^|/)docker-compose\.ya?ml$|(^|/)Makefile$'
+code_regex="$ext_pat|$static_files"
 
 ###############################################################################
-# 5. Core dumping routines
+# 7. Dump helpers
 ###############################################################################
 dump_code() {
-  printf '%s\n' "$tracked_files" | grep -E -i "$exts" |
-  while IFS= read -r f; do
-    is_ignored "$f" && continue
-    printf '\n===== %s =====\n' "$f"
-    cat -- "$f"
-  done
+  printf '%s\n' "$tracked_files" | grep -E -i "$code_regex" |
+  while IFS= read -r f; do is_ignored "$f" && continue; printf '\n===== %s =====\n' "$f"; cat -- "$f"; done
 }
-
-filtered_for_tree() {
-  printf '%s\n' "$tracked_files" | while IFS= read -r f; do
-    is_ignored "$f" || printf '%s\n' "$f"
-  done
-}
+filtered_tree() { printf '%s\n' "$tracked_files" | while IFS= read -r f; do is_ignored "$f" || printf '%s\n' "$f"; done; }
 
 ###############################################################################
-# 6. Dispatch
+# 8. Dispatch
 ###############################################################################
 cmd="${1:-code}"
 case "$cmd" in
-  tree)
-    command -v tree >/dev/null 2>&1 || { echo "snapshot: error - install 'tree'."; exit 1; }
-    filtered_for_tree | tree --fromfile
-    ;;
-
-  code) dump_code ;;
-
-  copy)
-    command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: error - pbcopy not found."; exit 1; }
-    bytes=$(dump_code | tee >(wc -c) | pbcopy | tail -1)
-    echo "snapshot: copied $bytes bytes to clipboard."
-    ;;
-
-  --config|-c|config) show_config ;;
-
-  --ignore|-i|ignore) shift; add_ignores "$@" ;;
-
-  *)
-    echo "snapshot: error - unknown command '$cmd'" >&2
-    echo "usage: snapshot [tree|code|copy|--config|--ignore]" >&2
-    exit 2 ;;
+  tree)   command -v tree >/dev/null 2>&1 || { echo "snapshot: install 'tree' first."; exit 1; }
+          filtered_tree | tree --fromfile ;;
+  code)   dump_code ;;
+  copy)   command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: pbcopy not found."; exit 1; }
+          bytes=$(dump_code | tee >(wc -c) | pbcopy | tail -1); echo "snapshot: copied $bytes bytes to clipboard." ;;
+  --config|-c|config)      show_config ;;
+  --ignore|-i|ignore)      shift; add_ignores "$@" ;;
+  --add-type)              shift; add_type "$@" ;;
+  --remove-type)           shift; remove_type "$@" ;;
+  *) echo "snapshot: error – unknown command '$cmd'"; echo "usage: snapshot [tree|code|copy|--config|--ignore|--add-type|--remove-type]" >&2; exit 2 ;;
 esac

@@ -21,12 +21,12 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
       - name: Run snapshot tests
         run: |
           bash test/test_config.sh
           bash test/test_ignore_file.sh
           bash test/test_ignore_path.sh
+          bash test/test_types.sh
   # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version
