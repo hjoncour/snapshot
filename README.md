@@ -1,4 +1,4 @@
-# snapshot# Snapshot
+# snapshot
 
 **Snapshot** is a simple command-line utility designed to streamline project inspection and sharing workflows. It helps quickly generate structured views of a project's repository, capture code snippets, and copy detailed project snapshots directly to your clipboard for seamless sharing.
 
