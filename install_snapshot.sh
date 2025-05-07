@@ -20,19 +20,18 @@ fi
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "Error: run the installer from inside the snapshot repo." >&2; exit 1; }
 
-src="$repo_root/src/snapshot.sh"
+src_dir="$repo_root/src"
 dest_dir="$HOME/bin"
 dest="$dest_dir/snapshot"
-
 cfg_dir="$HOME/Library/Application Support/snapshot"
 cfg_file="$cfg_dir/config.json"
-template_cfg="$repo_root/config.json"   # ships with the repo
+template_cfg="$repo_root/config.json"
 
 ###############################################################################
 # 1. Install the executable
 ###############################################################################
 mkdir -p "$dest_dir"
-cp "$src" "$dest"
+bash "$src_dir/make_snapshot.sh" > "$dest"
 chmod +x "$dest"
 echo "✅ Installed snapshot → $dest"
 
