@@ -25,7 +25,7 @@ echo '{}' > config.json
 
 # copy snapshot script
 mkdir -p src
-cp "$repo_root/src/snapshot.sh" src/snapshot.sh
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
 chmod +x src/snapshot.sh
 
 # stage files explicitly
