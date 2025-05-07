@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install_snapshot.sh – copy snapshot.sh to ~/bin and create / update global configuration in “~/Library/Application Support/snapshot”
+# install_snapshot.sh - copy snapshot.sh to ~/bin and create / update global configuration in “~/Library/Application Support/snapshot”
 #
 set -euo pipefail
 

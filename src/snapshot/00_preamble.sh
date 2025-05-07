@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# snapshot – quick Git‑aware project dumper / tree / clipboard / config helper
+# snapshot - quick Git‑aware project dumper / tree / clipboard / config helper
 # (section 0 from the former monolithic script)
 #
 set -euo pipefail

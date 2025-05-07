@@ -28,6 +28,7 @@ jobs:
           bash test/test_ignore_file.sh
           bash test/test_ignore_path.sh
           bash test/test_install.sh
+          bash test/test_types_tracked.sh
         # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version
