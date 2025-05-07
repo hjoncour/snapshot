@@ -27,7 +27,8 @@ jobs:
           bash test/test_config.sh
           bash test/test_ignore_file.sh
           bash test/test_ignore_path.sh
-  # ────────────────────────────────────────────────────────────────────────────
+          bash test/test_install.sh
+        # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version
     runs-on: ubuntu-latest
