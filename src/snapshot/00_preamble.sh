@@ -4,6 +4,12 @@
 # (section 0 from the former monolithic script)
 #
 set -euo pipefail
+no_snapshot=false
+# only shift off --no-snapshot if present, safely under set -u
+if [[ "${1:-}" == "--no-snapshot" ]]; then
+  no_snapshot=true
+  shift
+fi
 
 ###############################################################################
 # 0. Locate global config (overridable via $SNAPSHOT_CONFIG)
