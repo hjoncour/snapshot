@@ -42,7 +42,7 @@ for needle in \
   "===== test.sample.js ====="
 do
   echo "$output" | grep -Fq "$needle" || {
-    echo "❌ setup error – expected '$needle' in initial dump." >&2
+    echo "❌ setup error - expected '$needle' in initial dump." >&2
     echo "Dump was:" >&2
     echo "$output" >&2
     exit 1
@@ -60,7 +60,7 @@ for banned in \
   "===== test.sample.js ====="
 do
   if echo "$output2" | grep -Fq "$banned"; then
-    echo "❌ ignore_path failed – still saw '$banned'" >&2
+    echo "❌ ignore_path failed - still saw '$banned'" >&2
     echo "Dump was:" >&2
     echo "$output2" >&2
     exit 1

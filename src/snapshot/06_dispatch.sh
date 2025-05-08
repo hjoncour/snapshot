@@ -16,12 +16,13 @@ case "$cmd" in
     echo "snapshot: copied $bytes bytes to clipboard."
     ;;
 
-  --config|-c|config) show_config ;;
-
-  --ignore|-i|ignore) shift; add_ignores "$@" ;;
+  --config|-c|config)           show_config ;;
+  --ignore|-i|ignore)           shift; add_ignores    "$@" ;;
+  --add-type|add-type)          shift; add_types      "$@" ;;
+  --remove-type|remove-type)    shift; remove_types   "$@" ;;
 
   *)
     echo "snapshot: error - unknown command '$cmd'" >&2
-    echo "usage: snapshot [tree|code|copy|--config|--ignore]" >&2
+    echo "usage: snapshot [tree|code|copy|--config|--ignore|--add-type|--remove-type]" >&2
     exit 2 ;;
 esac
