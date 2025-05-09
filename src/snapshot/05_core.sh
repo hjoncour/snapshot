@@ -21,7 +21,11 @@ filtered_for_tree() {
 # Saving to ~/Library/Application Support/snapshot/<project>/<epoch>_<branch>_<hash>
 ###############################################################################
 save_snapshot() {
-  [ "$no_snapshot" = true ] && return 0
+  # If the user asked to skip snapshots, still drain stdin
+  if [ "$no_snapshot" = true ]; then
+    cat >/dev/null
+    return 0
+  fi
 
   project=$(jq -r '.project // empty' "$global_cfg")
   [ -z "$project" ] && project="$(basename "$git_root")"
