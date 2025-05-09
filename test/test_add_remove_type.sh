@@ -36,20 +36,20 @@ snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
 ###############################################################################
 echo '{}' > global.json
 initial=$(snap code | grep -c '^===== note.txt =====' || true)
-[ "$initial" -eq 0 ] || { echo "❌ setup error – note.txt unexpectedly present." >&2; exit 1; }
+[ "$initial" -eq 0 ] || { echo "❌ setup error - note.txt unexpectedly present." >&2; exit 1; }
 
 ###############################################################################
 # 4. add txt type, confirm inclusion
 ###############################################################################
 snap --add-type txt >/dev/null
-added=$(snap code | grep -c '^===== note.txt =====')
-[ "$added" -eq 1 ] || { echo "❌ --add-type failed – note.txt still missing." >&2; exit 1; }
+added=$(snap --print code | grep -c '^===== note.txt =====')
+[ "$added" -eq 1 ] || { echo "❌ --add-type failed - note.txt still missing." >&2; exit 1; }
 
 ###############################################################################
 # 5. remove txt type, confirm exclusion again
 ###############################################################################
 snap --remove-type txt >/dev/null
 removed=$(snap code | grep -c '^===== note.txt =====' || true)
-[ "$removed" -eq 0 ] || { echo "❌ --remove-type failed – note.txt still present." >&2; exit 1; }
+[ "$removed" -eq 0 ] || { echo "❌ --remove-type failed - note.txt still present." >&2; exit 1; }
 
 echo "✅ --add-type / --remove-type work as expected"

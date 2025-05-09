@@ -35,7 +35,7 @@ git add -f demo_dir/foo.js .secret-pass.sh test.sample.js keep.sh config.json >/
 snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
 
 # 2. ensure initial presence
-output="$(snap code)"
+output="$(snap --print code)"
 for needle in \
   "===== demo_dir/foo.js =====" \
   "===== .secret-pass.sh =====" \

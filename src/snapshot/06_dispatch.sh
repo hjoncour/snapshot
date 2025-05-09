@@ -9,13 +9,21 @@ case "$cmd" in
     ;;
 
   code)
-    dump_code | tee >(save_snapshot)
-    ;;
+    # generate dump, save to file, and capture the filename
+    SNAPSHOT_FILE=$(dump_code | save_snapshot)
 
-  copy)
-    command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: error - pbcopy not found."; exit 1; }
-    bytes=$(dump_code | tee >(save_snapshot) | tee >(wc -c) | pbcopy | tail -1)
-    echo "snapshot: copied $bytes bytes to clipboard."
+    # optionally print to stdout
+    if [[ "$do_print" == true ]]; then
+      cat "$SNAPSHOT_FILE"
+    fi
+
+    # optionally copy to clipboard
+    if [[ "$do_copy" == true ]]; then
+      command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: error - pbcopy not found."; exit 1; }
+      bytes=$(wc -c < "$SNAPSHOT_FILE")
+      pbcopy < "$SNAPSHOT_FILE"
+      echo "snapshot: copied $bytes bytes to clipboard."
+    fi
     ;;
 
   --config|-c|config)
@@ -39,7 +47,7 @@ case "$cmd" in
 
   *)
     echo "snapshot: error - unknown command '$cmd'" >&2
-    echo "usage: snapshot [tree|code|copy|--config|--ignore|--add-type|--remove-type]" >&2
+    echo "usage: snapshot [tree|--config|--ignore|--add-type|--remove-type] [--copy] [--print] [--no-snapshot]" >&2
     exit 2
     ;;
 esac
