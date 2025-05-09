@@ -43,16 +43,16 @@ EOF
 ###############################################################################
 # 4. Run snapshot and assert results
 ###############################################################################
-dump=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh code)
+dump=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print code)
 
 echo "$dump" | grep -q '===== note.txt =====' || {
-  echo "❌ types_tracked failed – note.txt missing" >&2
+  echo "❌ types_tracked failed - note.txt missing" >&2
   exit 1
 }
 
 for banned in foo.js bar.c; do
   if echo "$dump" | grep -q "===== $banned ====="; then
-    echo "❌ types_tracked failed – saw $banned but it should be excluded" >&2
+    echo "❌ types_tracked failed - saw $banned but it should be excluded" >&2
     exit 1
   fi
 done

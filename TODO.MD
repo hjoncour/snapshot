@@ -1,4 +1,8 @@
-- send snapshot to folder with timestamp
+- snapshot --list (list snapshots of current project)
+- snapshot --list {project name} (list snapshots of named project)
+- snapshot --list-global (overview of )
+- snapshot --projects (list projects)
+
 
 - project specific config
 
