@@ -4,24 +4,18 @@
 cmd="${1:-code}"
 case "$cmd" in
   tree)
-    command -v tree >/dev/null 2>&1 || { echo "snapshot: error - install 'tree'."; exit 1; }
+    command -v tree >/dev/null 2>&1 || { echo "snapshot: install 'tree' first."; exit 1; }
     filtered_for_tree | tree --fromfile
     ;;
 
   code)
-    # generate dump, save to file, and capture the filename
     SNAPSHOT_FILE=$(dump_code | save_snapshot)
 
-    # optionally print to stdout
-    if [[ "$do_print" == true ]]; then
-      cat "$SNAPSHOT_FILE"
-    fi
-
-    # optionally copy to clipboard
-    if [[ "$do_copy" == true ]]; then
-      command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: error - pbcopy not found."; exit 1; }
-      bytes=$(wc -c < "$SNAPSHOT_FILE")
-      pbcopy < "$SNAPSHOT_FILE"
+    $do_print && cat "$SNAPSHOT_FILE"
+    if $do_copy; then
+      command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: install 'pbcopy' first."; exit 1; }
+      bytes=$(wc -c <"$SNAPSHOT_FILE")
+      pbcopy <"$SNAPSHOT_FILE"
       echo "snapshot: copied $bytes bytes to clipboard."
     fi
     ;;
@@ -35,6 +29,11 @@ case "$cmd" in
     add_ignores "$@"
     ;;
 
+  --remove)
+    shift
+    remove_ignores "$@"
+    ;;
+
   --add-type|add-type)
     shift
     add_types "$@"
@@ -46,8 +45,8 @@ case "$cmd" in
     ;;
 
   *)
-    echo "snapshot: error - unknown command '$cmd'" >&2
-    echo "usage: snapshot [tree|--config|--ignore|--add-type|--remove-type] [--copy] [--print] [--no-snapshot]" >&2
+    echo "snapshot: unknown command '$cmd'." >&2
+    echo "usage: snapshot [tree|code|--config|--ignore|--remove] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
     exit 2
     ;;
 esac

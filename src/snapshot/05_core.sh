@@ -1,10 +1,8 @@
 ###############################################################################
 # 5. Core dumping routines + snapshot-to-file
 ###############################################################################
-
 dump_code() {
-  printf '%s\n' "$tracked_files" | grep -E -i "$exts" |
-  while IFS= read -r f; do
+  printf '%s\n' "$tracked_files" | grep -E -i "$exts" | while IFS= read -r f; do
     is_ignored "$f" && continue
     printf '\n===== %s =====\n' "$f"
     cat -- "$f"
@@ -17,19 +15,11 @@ filtered_for_tree() {
   done
 }
 
-###############################################################################
-# Saving to ~/Library/Application Support/snapshot/<project>/<epoch>_<branch>_<hash>
-###############################################################################
 save_snapshot() {
-  # If the user asked to skip snapshots, still drain stdin
-  if [ "$no_snapshot" = true ]; then
-    cat >/dev/null
-    return 0
-  fi
+  [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
 
   project=$(jq -r '.project // empty' "$global_cfg")
-  [ -z "$project" ] && project="$(basename "$git_root")"
-
+  project="${project:-$(basename "$git_root")}"
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
   branch=${branch//\//_}
@@ -39,10 +29,7 @@ save_snapshot() {
   mkdir -p "$out_dir"
   out_file="$out_dir/${epoch}_${branch}_${commit}.snapshot"
 
-  # write the dump into the file
-  cat > "$out_file"
-  # notify user on stderr
+  cat >"$out_file"
   echo "snapshot: saved dump to $out_file" >&2
-  # echo the filename on stdout so the dispatcher can capture it
   echo "$out_file"
 }
