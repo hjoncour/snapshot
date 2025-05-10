@@ -29,7 +29,7 @@ case "$cmd" in
     add_ignores "$@"
     ;;
 
-  --remove)
+  --remove-ignore)
     shift
     remove_ignores "$@"
     ;;
@@ -46,7 +46,7 @@ case "$cmd" in
 
   *)
     echo "snapshot: unknown command '$cmd'." >&2
-    echo "usage: snapshot [tree|code|--config|--ignore|--remove] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
+    echo "usage: snapshot [tree|--config|--ignore|--remove-ignore] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
     exit 2
     ;;
 esac

@@ -8,8 +8,29 @@ need_jq() {
 }
 
 show_config() {
-  # you can also do: cat "$global_cfg"
-  jq . "$global_cfg"
+  # pretty-print everything, but inline our three arrays
+  local proj version owner desc types ignore_files ignore_paths
+  proj=$(jq -r '.project // ""'       "$global_cfg")
+  version=$(jq -r '.version // ""'     "$global_cfg")
+  owner=$(jq -r '.owner // ""'         "$global_cfg")
+  desc=$(jq -r '.description|@json'    "$global_cfg")
+  types=$(jq -r '.settings.types_tracked // [] | map(@json) | join(", ")' "$global_cfg")
+  ignore_files=$(jq -r '.ignore_file   // [] | map(@json) | join(", ")' "$global_cfg")
+  ignore_paths=$(jq -r '.ignore_path   // [] | map(@json) | join(", ")' "$global_cfg")
+
+  cat <<EOF
+{
+  "project": "$proj",
+  "version": "$version",
+  "owner": "$owner",
+  "description": $desc,
+  "settings": {
+    "types_tracked": [${types}]
+  },
+  "ignore_file": [${ignore_files}],
+  "ignore_path": [${ignore_paths}]
+}
+EOF
 }
 
 add_ignores() {
@@ -31,8 +52,8 @@ add_ignores() {
 }
 
 remove_ignores() {
-  need_jq "--remove"
-  [ "$#" -gt 0 ] || { echo "snapshot: error - --remove needs arguments." >&2; exit 2; }
+  need_jq "--remove-ignore"
+  [ "$#" -gt 0 ] || { echo "snapshot: error - --remove-ignore needs arguments." >&2; exit 2; }
   for item in "$@"; do
     jq --arg x "$item" '
       .ignore_file = ((.ignore_file // []) | map(select(. != $x))) |
