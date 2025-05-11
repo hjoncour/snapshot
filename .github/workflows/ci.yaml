@@ -31,6 +31,7 @@ jobs:
           bash test/test_types_tracked.sh
           bash test/test_add_remove_type.sh
           bash test/test_save_snapshot.sh
+          bash test/test_use_gitignore.sh
         # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version
