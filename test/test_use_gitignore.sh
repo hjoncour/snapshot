@@ -97,25 +97,12 @@ target/
 profile_default/
 ipython_config.py
 
-# pyenv
-# .python-version
-
-# pipenv
-#Pipfile.lock
-
-# UV
-#uv.lock
-
-# poetry
-#poetry.lock
-
 # pdm
-#Pipfile.lock
 .pdm.toml
 .pdm-python
 .pdm-build/
 
-# PEP 582
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
 # Celery stuff
@@ -149,17 +136,14 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# Pyre
+# Pyre type checker
 .pyre/
 
-# pytype
+# pytype static type analyzer
 .pytype/
 
 # Cython debug symbols
 cython_debug/
-
-# PyCharm
-#.idea/
 
 # PyPI configuration file
 .pypirc
@@ -188,8 +172,8 @@ if [ "$ignore_file_count" -ne 29 ]; then
   exit 1
 fi
 
-if [ "$ignore_path_count" -ne 50 ]; then
-  echo "❌ use-gitignore: expected 50 ignore_path entries, got $ignore_path_count" >&2
+if [ "$ignore_path_count" -ne 51 ]; then
+  echo "❌ use-gitignore: expected 51 ignore_path entries, got $ignore_path_count" >&2
   exit 1
 fi
 
