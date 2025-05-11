@@ -4,6 +4,21 @@
 - snapshot --projects (list projects)
 
 
+- chore config version bump should only be done if checks pass
+- remove snapshot code
+- snapshot tree -> snapshot --tree + fix ignore apply to snapshot --tree
+- snapshot ignore path --> use /
+- snapshot ignore revert
+
+- snapshot --ignored
+- snapshot --ignored-files
+- snapshot --ignored-paths
+- snapshot --history
+
+
+
+
+
 - project specific config
 
 

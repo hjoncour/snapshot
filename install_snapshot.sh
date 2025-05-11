@@ -40,7 +40,7 @@ echo "✅ Installed snapshot → $dest"
 mkdir -p "$cfg_dir"
 
 if [ ! -f "$template_cfg" ]; then
-  echo "Error: template config.json not found in repo root." >&2
+  echo "Error: template config.json not found." >&2;
   exit 1
 fi
 

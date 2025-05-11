@@ -8,7 +8,7 @@ set -euo pipefail
 no_snapshot=false
 do_copy=false
 do_print=false
-SNAPSHOT_FILE=""
+
 
 # pull off any leading global flags
 while [[ "${1:-}" =~ ^-- ]]; do
@@ -21,7 +21,7 @@ while [[ "${1:-}" =~ ^-- ]]; do
 done
 
 ###############################################################################
-# 0. Locate global config (overridable via $SNAPSHOT_CONFIG)
+# 0. Locate global config
 ###############################################################################
 cfg_default_dir="$HOME/Library/Application Support/snapshot"
 global_cfg="${SNAPSHOT_CONFIG:-$cfg_default_dir/config.json}"
