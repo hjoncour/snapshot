@@ -34,6 +34,10 @@ case "$cmd" in
     remove_ignores "$@"
     ;;
 
+  --use-gitignore)
+    use_gitignore
+    ;;
+
   --add-type|add-type)
     shift
     add_types "$@"
@@ -46,7 +50,7 @@ case "$cmd" in
 
   *)
     echo "snapshot: unknown command '$cmd'." >&2
-    echo "usage: snapshot [tree|--config|--ignore|--remove-ignore] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
+    echo "usage: snapshot [tree|code|--config|--ignore|--remove-ignore|--use-gitignore] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
     exit 2
     ;;
 esac

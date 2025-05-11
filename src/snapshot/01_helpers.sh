@@ -84,3 +84,22 @@ remove_types() {
     echo "snapshot: removed '$t' from settings.types_tracked."
   done
 }
+
+use_gitignore() {
+  # read .gitignore and add each pattern
+  [ -f .gitignore ] || { echo "snapshot: .gitignore not found." >&2; exit 1; }
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+    if [[ "$line" == */ || "$line" == */* || "$line" == *'*'* || "$line" == *'?'* ]]; then
+      jq --arg p "$line" \
+         '.ignore_path = ((.ignore_path // []) + [$p] | unique)' \
+         "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+      echo "snapshot: added '$line' to ignore_path."
+    else
+      jq --arg f "$line" \
+         '.ignore_file = ((.ignore_file // []) + [$f] | unique)' \
+         "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+      echo "snapshot: added '$line' to ignore_file."
+    fi
+  done < .gitignore
+}

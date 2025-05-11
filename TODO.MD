@@ -17,6 +17,14 @@
 
 
 
+---
+set flag to automatically add gitignore to files & path
+
+--
+update version in config automatically
+--
+
+
 
 
 - project specific config
