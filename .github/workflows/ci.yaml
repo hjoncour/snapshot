@@ -24,15 +24,9 @@ jobs:
 
       - name: Run snapshot tests
         run: |
-          bash test/test_config.sh
-          bash test/test_ignore_file.sh
-          bash test/test_ignore_path.sh
-          bash test/test_install.sh
-          bash test/test_types_tracked.sh
-          bash test/test_add_remove_type.sh
-          bash test/test_save_snapshot.sh
-          bash test/test_use_gitignore.sh
-        # ────────────────────────────────────────────────────────────────────────────
+          chmod +x test/run-all.sh
+          bash test/run-all.sh
+
   bump-version:
     name: Auto-increment patch version
     runs-on: ubuntu-latest
