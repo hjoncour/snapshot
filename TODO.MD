@@ -38,4 +38,5 @@ update version in config automatically
 
 - add command to update automatically
 
+update installed config.json version
 

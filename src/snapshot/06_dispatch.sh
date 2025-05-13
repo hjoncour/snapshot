@@ -34,6 +34,18 @@ case "$cmd" in
     remove_ignores "$@"
     ;;
 
+  --remove-all-ignored)
+    remove_all_ignored
+    ;;
+
+  --remove-all-ignored-paths)
+    remove_all_ignored_paths
+    ;;
+
+  --remove-all-ignored-files)
+    remove_all_ignored_files
+    ;;
+
   --use-gitignore)
     use_gitignore
     ;;
@@ -48,9 +60,24 @@ case "$cmd" in
     remove_types "$@"
     ;;
 
+  --remove-all-types)
+    remove_all_types
+     ;;
+
+  --add-default-types|add-default-types)
+    add_default_types
+    ;;
   *)
     echo "snapshot: unknown command '$cmd'." >&2
-    echo "usage: snapshot [tree|code|--config|--ignore|--remove-ignore|--use-gitignore] [--copy] [--print] [--no-snapshot] [--add-type] [--remove-type]" >&2
+    echo "usage: snapshot [tree|code]"                                       >&2
+    echo "                [--config]"                                        >&2
+    echo "                [--ignore|--remove-ignore]"                        >&2
+    echo "                [--remove-all-ignored|--remove-all-ignored-paths]" >&2
+    echo "                [--remove-all-ignored-files]"                      >&2
+    echo "                [--use-gitignore]"                                 >&2
+    echo "                [--add-type|--remove-type|--remove-all-types]"     >&2
+    echo "                [--copy] [--print] [--no-snapshot]"                >&2
+    echo "                [--add-type|--remove-type|--remove-all-types|--add-default-types]" >&2
     exit 2
     ;;
 esac

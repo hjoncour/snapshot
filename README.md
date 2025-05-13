@@ -40,15 +40,21 @@ snapshot --no-snapshot code        # generate (and optionally copy/print) but sk
 
 ### Commands & Flags:
 
-tree                    Display the repository structure
-code                    Generate a code snapshot # should be removed
---print                 Print snapshot to stdout (use with code)
---copy                  Copy snapshot to clipboard (use with code)
---no-snapshot           Do not save snapshot to disk
---config, -c            Show the global configuration file
---ignore, -i            Add one or more ignore patterns
---add-type              Add one or more file extensions to track
---remove-type           Remove one or more file extensions from tracking
+tree                            Display the repository structure
+code                            Generate a code snapshot # should be removed
+--print                         Print snapshot to stdout
+--copy                          Copy snapshot to clipboard
+--no-snapshot                   Do not save snapshot to disk
+--config, -c                    Show the global configuration file
+--ignore, -i                    Add one or more ignore patterns
+--remove-ignore                 Remove one or more ignore patterns
+--remove-all-ignored            Clear BOTH ignore lists
+--remove-all-ignored-paths      Clear ignore_path list only
+--remove-all-ignored-files      Clear ignore_file list only
+--add-type                      Add one or more file extensions to track
+--remove-type                   Remove one or more file extensions from tracking
+--remove-all-types              Remove ALL tracked-extension entries
+--use-gitignore                 Imports ignored files and folders from .gitignore file to settings
 
 ## Running Tests:
 
