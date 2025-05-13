@@ -97,7 +97,6 @@ target/
 profile_default/
 ipython_config.py
 
-# pdm
 .pdm.toml
 .pdm-python
 .pdm-build/
@@ -164,10 +163,12 @@ chmod +x src/snapshot.sh
 SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --use-gitignore
 
 # verify counts & show helpful diffs on failure
+# verify counts & show helpful diffs on failure
 ignore_file_count=$(jq '.ignore_file | length' global.json)
 ignore_path_count=$(jq '.ignore_path | length' global.json)
 
-# after re-classifying dot-prefixed patterns we now expect **30** files and **60** path patterns.
+# after final classification we should end up with **30** file-patterns
+# and **50** path-patterns (total 80 patterns in the sample .gitignore).
 if [ "$ignore_file_count" -ne 30 ]; then
   echo "❌ use-gitignore: expected 30 ignore_file entries, got $ignore_file_count" >&2
   echo "── ignore_file list ──" >&2
@@ -175,8 +176,8 @@ if [ "$ignore_file_count" -ne 30 ]; then
   exit 1
 fi
  
-if [ "$ignore_path_count" -ne 60 ]; then
-  echo "❌ use-gitignore: expected 60 ignore_path entries, got $ignore_path_count" >&2
+if [ "$ignore_path_count" -ne 50 ]; then
+  echo "❌ use-gitignore: expected 50 ignore_path entries, got $ignore_path_count" >&2
   echo "── ignore_path list ──" >&2
   jq -r '.ignore_path[]' global.json >&2
   exit 1
