@@ -1,29 +1,66 @@
 #!/usr/bin/env bash
 #
-# Verify that the installer correctly assembles & installs the script.
+# test_install.sh – verify that the installer
+#   1) creates a working snapshot binary
+#   2) *updates* an existing global config’s version field to the template’s
 #
 set -euo pipefail
 
+###############################################################################
+# 0. Locate the real repository (needed to run make_snapshot.sh + read template)
+###############################################################################
 repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
 
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
+template_version=$(jq -r '.version' "$repo_root/config.json")
 
-# fake a HOME so we don’t pollute the real user
-export HOME="$tmpdir/home"
-mkdir -p "$HOME"
+###############################################################################
+# 1. Prepare an isolated HOME with a *pre-existing* (old) config.json
+###############################################################################
+tmp_home=$(mktemp -d)
+trap 'rm -rf "$tmp_home"' EXIT
+export HOME="$tmp_home"
 
-# run installer
+cfg_dir="$HOME/Library/Application Support/snapshot"
+mkdir -p "$cfg_dir"
+
+old_cfg="$cfg_dir/config.json"
+cat >"$old_cfg" <<'EOF'
+{
+  "version": "0.0.0.0",
+  "user_key": "should_be_preserved"
+}
+EOF
+
+###############################################################################
+# 2. Run the installer
+###############################################################################
 bash "$repo_root/install_snapshot.sh" >/dev/null
 
 exe="$HOME/bin/snapshot"
-[ -x "$exe" ] || { echo "❌ installer failed - binary not found." >&2; exit 1; }
+[ -x "$exe" ] || { echo "❌ installer failed – binary not found." >&2; exit 1; }
 
-# sanity‑check: default --config should print valid JSON
-output=$("$exe" --config 2>/dev/null)
-echo "$output" | jq -e type >/dev/null || {
-  echo "❌ snapshot --config did not output JSON" >&2
+###############################################################################
+# 3. Assertions on the *updated* global config
+###############################################################################
+updated_cfg="$cfg_dir/config.json"
+
+# a) version field must now match the template’s version
+new_version=$(jq -r '.version'        "$updated_cfg")
+if [[ "$new_version" != "$template_version" ]]; then
+  echo "❌ installer did NOT bump version (expected $template_version, got $new_version)" >&2
+  exit 1
+fi
+
+# b) any pre-existing custom keys must still be there
+jq -e '.user_key == "should_be_preserved"' "$updated_cfg" >/dev/null || {
+  echo "❌ installer overwrote custom keys in config.json" >&2
   exit 1
 }
 
-echo "✅ installer produced working snapshot binary"
+# c) sanity-check: snapshot --config still emits valid JSON
+"$exe" --config | jq -e type >/dev/null || {
+  echo "❌ snapshot --config no longer outputs valid JSON" >&2
+  exit 1
+}
+
+echo "✅ installer updates version & preserves existing keys"
