@@ -167,18 +167,17 @@ SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --use-gitignore
 ignore_file_count=$(jq '.ignore_file | length' global.json)
 ignore_path_count=$(jq '.ignore_path | length' global.json)
 
-if [ "$ignore_file_count" -ne 29 ]; then
-  echo "❌ use-gitignore: expected 29 ignore_file entries, got $ignore_file_count" >&2
+# after re-classifying dot-prefixed patterns we now expect **30** files and **60** path patterns.
+if [ "$ignore_file_count" -ne 30 ]; then
+  echo "❌ use-gitignore: expected 30 ignore_file entries, got $ignore_file_count" >&2
   echo "── ignore_file list ──" >&2
   jq -r '.ignore_file[]' global.json >&2
   exit 1
 fi
-
-if [ "$ignore_path_count" -ne 51 ]; then
-  echo "❌ use-gitignore: expected 51 ignore_path entries, got $ignore_path_count" >&2
+ 
+if [ "$ignore_path_count" -ne 60 ]; then
+  echo "❌ use-gitignore: expected 60 ignore_path entries, got $ignore_path_count" >&2
   echo "── ignore_path list ──" >&2
   jq -r '.ignore_path[]' global.json >&2
   exit 1
 fi
-
-echo "✅ --use-gitignore populated ignore_file ($ignore_file_count) and ignore_path ($ignore_path_count) correctly"
