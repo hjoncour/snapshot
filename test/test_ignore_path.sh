@@ -35,7 +35,7 @@ git add -f demo_dir/foo.js .secret-pass.sh test.sample.js keep.sh config.json >/
 snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
 
 # 2. ensure initial presence
-output="$(snap --print code)"
+output="$(snap --print)"
 for needle in \
   "===== demo_dir/foo.js =====" \
   "===== .secret-pass.sh =====" \
@@ -53,7 +53,7 @@ done
 snap --ignore 'demo_dir/*' '.secret-*' '**.sample.js' >/dev/null
 
 # 4. ensure files are now excluded
-output2="$(snap code)"
+output2="$(snap)"
 for banned in \
   "===== demo_dir/foo.js =====" \
   "===== .secret-pass.sh =====" \

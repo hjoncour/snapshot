@@ -32,7 +32,7 @@ EOF
 ###############################################################################
 # 1. run without flag → file must appear
 ###############################################################################
-snap code >/dev/null
+snap >/dev/null
 saved_dir="$HOME/Library/Application Support/snapshot/demo"
 files=("$saved_dir"/*)
 [ "${#files[@]}" -eq 1 ] || { echo "❌ expected one saved dump"; exit 1; }
@@ -40,7 +40,7 @@ files=("$saved_dir"/*)
 ###############################################################################
 # 2. run with --no-snapshot → no new file
 ###############################################################################
-snap --no-snapshot code >/dev/null
+snap --no-snapshot >/dev/null
 files2=("$saved_dir"/*)
 [ "${#files2[@]}" -eq 1 ] || { echo "❌ --no-snapshot still saved a file"; exit 1; }
 

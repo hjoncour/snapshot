@@ -43,7 +43,7 @@ EOF
 ###############################################################################
 # 4. Run snapshot and assert results
 ###############################################################################
-dump=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print code)
+dump=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print)
 
 echo "$dump" | grep -q '===== note.txt =====' || {
   echo "❌ types_tracked failed - note.txt missing" >&2

@@ -24,14 +24,14 @@ chmod +x src/snapshot.sh
 git add . >/dev/null                # so git ls-files sees them
 
 # 1. confirm foo.md is present
-before=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print code | grep -c '^===== foo.md =====')
+before=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print | grep -c '^===== foo.md =====')
 [ "$before" -eq 1 ] || { echo "❌ setup error - foo.md not found." >&2; exit 1; }
 
 # 2. ignore it
 SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --ignore foo.md
 
 # 3. run again, confirm foo.md gone
-after=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print code | grep -c '^===== foo.md =====' || true)
+after=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print | grep -c '^===== foo.md =====' || true)
 if [ "$after" -eq 0 ]; then
   echo "✅ ignore_file works (foo.md skipped)"
 else
