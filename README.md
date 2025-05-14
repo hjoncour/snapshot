@@ -61,8 +61,8 @@ code                            Generate a code snapshot # should be removed
 From the project root, tests are self-contained and will not overwrite your real config:
 
 ```bash
-$ chmod +x test/run-all.sh
-$ bash test/run-all.sh
+$ chmod +x test.sh
+$ bash test.sh
 ```
 
 ## Contributions:
