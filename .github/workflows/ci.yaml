@@ -28,10 +28,10 @@ jobs:
           # For pull_request_target we still want the PR branch’s contents
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-    #  - name: Run snapshot tests
-    #    run: |
-    #      chmod +x test.sh
-    #      bash test.sh
+      - name: Run snapshot tests
+        run: |
+          chmod +x test.sh
+          bash test.sh
 
   # ────────────────────────────────────────────────────────────────────────────
   bump-version:

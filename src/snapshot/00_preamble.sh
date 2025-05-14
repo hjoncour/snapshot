@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# snapshot – quick Git-aware project dumper / tree / clipboard / config helper
+# snapshot - quick Git-aware project dumper / tree / clipboard / config helper
 # (section 0 from the former monolithic script)
 #
 set -euo pipefail
@@ -10,8 +10,9 @@ no_snapshot=false
 do_copy=false
 do_print=false
 custom_names=()
+tags=()
 
-# pull off any leading global flags (--no-snapshot, --copy, --print, --name…)
+# pull off any leading global flags (--no-snapshot, --copy, --print, --name, --tag)
 while [[ "${1:-}" =~ ^-- ]]; do
   case "$1" in
     --no-snapshot)
@@ -35,6 +36,17 @@ while [[ "${1:-}" =~ ^-- ]]; do
       ;;
     --name=*)
       custom_names+=("${1#--name=}")
+      shift
+      ;;
+    --tag)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        tags+=("$1")
+        shift
+      done
+      ;;
+    --tag=*)
+      tags+=("${1#--tag=}")
       shift
       ;;
     *)
