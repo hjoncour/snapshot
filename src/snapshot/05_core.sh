@@ -23,63 +23,74 @@ filtered_for_tree() {
     done
 }
 
-# save_snapshot: writes dump to
-#   $HOME/Library/Application Support/snapshot/<project>/<name>.snapshot
+# save_snapshot: writes dump either to the usual support dir (default)
+#                or to the user-supplied --to paths.
+#   Supports multiple --name values, multiple --tag values,
+#   and multiple --to destinations.
 save_snapshot() {
-  # Skip saving if requested
+  # honour --no-snapshot
   [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
 
-  # slurp the entire dump into a temp file
-  local tmp
+  # read whole dump into a temp file
   tmp=$(mktemp)
   cat >"$tmp"
 
-  # build a “__tag1_tag2” suffix if any tags were passed
-  if [ "${#tags[@]}" -gt 0 ]; then
+  # prepare “__tag1_tag2” suffix (or empty)
+  if ((${#tags[@]})); then
     tag_str=$(IFS=_; echo "${tags[*]}")
     suffix="__${tag_str}"
   else
     suffix=""
   fi
 
-  # figure out project name
-  local local_cfg proj
-  local_cfg="$git_root/config.json"
-  if [ -f "$local_cfg" ]; then
-    proj=$(jq -r '.project // empty' "$local_cfg" 2>/dev/null || echo "")
-  fi
-  if [ -z "${proj:-}" ]; then
-    proj=$(jq -r '.project // empty' "$global_cfg" 2>/dev/null || echo "")
-  fi
-  [ -n "${proj:-}" ] || proj="$(basename "$git_root")"
-
-  # git metadata for fallback timestamped filenames
-  local epoch branch commit out_dir out_file results
+  ###########################################################################
+  # a) determine the *base* filename(s) (with or without --name …)
+  ###########################################################################
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
   branch=${branch//\//_}
   commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
-  out_dir="$cfg_default_dir/$proj"
-  mkdir -p "$out_dir"
-
-  results=()
-  if [ "${#custom_names[@]}" -gt 0 ]; then
-    for name in "${custom_names[@]}"; do
-      out_file="$out_dir/${name}${suffix}.snapshot"
-      cp "$tmp" "$out_file"
-      echo "snapshot: saved dump to $out_file" >&2
-      results+=("$out_file")
+  base_names=()
+  if ((${#custom_names[@]})); then
+    for n in "${custom_names[@]}"; do
+      base_names+=( "${n}${suffix}.snapshot" )
     done
   else
-    out_file="$out_dir/${epoch}_${branch}_${commit}.snapshot"
-    mv "$tmp" "$out_file"
-    echo "snapshot: saved dump to $out_file" >&2
-    results+=("$out_file")
+    base_names+=( "${epoch}_${branch}_${commit}${suffix}.snapshot" )
   fi
+
+  ###########################################################################
+  # b) determine *destination directories*
+  ###########################################################################
+  if ((${#dest_dirs[@]})); then
+    dests=("${dest_dirs[@]}")
+  else
+    # default support dir: ~/Library/Application Support/snapshot/<project>
+    local_cfg="$git_root/config.json"
+    proj=""
+    if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+    [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+    [ -z "$proj" ] && proj=$(basename "$git_root")
+    dests=( "$cfg_default_dir/$proj" )
+  fi
+
+  ###########################################################################
+  # c) write out every <dest>/<basename>; report each path
+  ###########################################################################
+  results=()
+  for d in "${dests[@]}"; do
+    mkdir -p "$d"
+    for b in "${base_names[@]}"; do
+      out="$d/$b"
+      cp "$tmp" "$out"
+      echo "snapshot: saved dump to $out" >&2
+      results+=( "$out" )
+    done
+  done
 
   rm -f "$tmp"
 
-  # emit the list of files for downstream use
+  # emit list (newline-separated) for callers (print|copy dispatchers)
   printf '%s\n' "${results[@]}"
 }

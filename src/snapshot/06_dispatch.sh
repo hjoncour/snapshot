@@ -117,6 +117,8 @@ Commands (both bare and --prefixed forms are supported):
 
 Flags:
   --name N1 [N2 …]   name one or more snapshots (writes N1.snapshot etc)
+  --tag  T1 [T2 …]   tag snapshot(s); becomes “…__T1_T2.snapshot”
+  --to   DIR [DIR …] save snapshot(s) to extra DIRs in addition to the default
   --no-snapshot      skip saving snapshot file(s) (dump only)
   --print            print the dump to stdout
   --copy             copy the dump to your clipboard

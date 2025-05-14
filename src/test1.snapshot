@@ -1,0 +1,1892 @@
+
+===== .github/workflows/ci.yaml =====
+name: CI & Version Bump
+
+################################################################################
+# 1. Trigger rules
+#    • Run tests on every PR update (pull_request *and* pull_request_target so
+#      we can later “need” the result from bump-version).
+#    • Run the bump job only via pull_request_target (it needs write access to
+#      the destination branch) *and* only after tests succeeded.
+################################################################################
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+################################################################################
+# 2. Jobs
+################################################################################
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  tests:
+    name: Shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR code
+        uses: actions/checkout@v4
+        with:
+          # For pull_request_target we still want the PR branch’s contents
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Run snapshot tests
+        run: |
+          chmod +x test.sh
+          bash test.sh
+
+  # ────────────────────────────────────────────────────────────────────────────
+  bump-version:
+    name: Auto-increment patch version
+    needs: tests
+    if: >
+      github.event_name == 'pull_request_target' && success() && !contains(github.event.pull_request.body, 'NO-BUMP')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump the most-minor version segment
+        id: bump
+        run: |
+          current=$(jq -r '.version' config.json)
+          # Split X.Y.Z… → bump last segment
+          IFS='.' read -r -a parts <<< "$current"
+          last=$(( ${#parts[@]} - 1 ))
+          parts[$last]=$(( parts[$last] + 1 ))
+          new=$(IFS='.'; echo "${parts[*]}")
+          jq ".version = \"$new\"" config.json > cfg.tmp && mv cfg.tmp config.json
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Commit & push
+        run: |
+          git config user.name  "snapshot-bot"
+          git config user.email "snapshot-bot@users.noreply.github.com"
+          git add config.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new }} [skip ci]" || exit 0
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+===== README.md =====
+# Snapshot
+
+Snapshot is a simple command-line utility designed to streamline project inspection and sharing workflows. It helps quickly generate structured views of a project's repository, capture code snippets, and copy detailed project snapshots directly to your clipboard for seamless sharing.
+
+## Features:
+- Tree View (snapshot tree): Generates a clear, readable project structure listing all tracked files.
+- Code Snapshot (snapshot or snapshot code): Outputs a structured display of all relevant source code and configuration files in your repository, including file names, paths, and contents.
+- Clipboard Copy (snapshot copy): Instantly copies your project's code snapshot to your clipboard, ready to paste into documentation, notes, or collaboration tools.
+
+## Installation:
+
+```bash
+$ git clone <your-repo-url>
+$ cd snapshot
+$ ./install_snapshot.sh
+```
+
+### Dependencies
+
+Ensure you have tree installed (required for the tree command):
+
+#### macOS:
+```bash
+$ brew install tree
+```
+
+#### Linux:
+
+```bash
+$ sudo apt install tree
+```
+
+## Usage Examples:
+
+snapshot tree
+snapshot code
+snapshot --print code              # save to file and print to stdout
+snapshot --copy --print code       # save, copy to clipboard, and print
+snapshot --no-snapshot code        # generate (and optionally copy/print) but skip saving
+
+### Commands & Flags:
+
+tree                            Display the repository structure
+code                            Generate a code snapshot # should be removed
+--print                         Print snapshot to stdout
+--copy                          Copy snapshot to clipboard
+--no-snapshot                   Do not save snapshot to disk
+--config, -c                    Show the global configuration file
+--ignore, -i                    Add one or more ignore patterns
+--remove-ignore                 Remove one or more ignore patterns
+--remove-all-ignored            Clear BOTH ignore lists
+--remove-all-ignored-paths      Clear ignore_path list only
+--remove-all-ignored-files      Clear ignore_file list only
+--add-type                      Add one or more file extensions to track
+--remove-type                   Remove one or more file extensions from tracking
+--remove-all-types              Remove ALL tracked-extension entries
+--use-gitignore                 Imports ignored files and folders from .gitignore file to settings
+
+## Running Tests:
+
+From the project root, tests are self-contained and will not overwrite your real config:
+
+```bash
+$ chmod +x test.sh
+$ bash test.sh
+```
+
+## Contributions:
+Contributions are very welcome, please read `TODO.md` for inspiration, but don't hesitate to submit a Pull Request if you have other great ideas or improvements.
+
+test
+===== TODO.MD =====
+- snapshot --list (list snapshots of current project)
+- snapshot --list {project name} (list snapshots of named project)
+- snapshot --list-global (overview of )
+- snapshot --projects (list projects)
+
+
+- chore config version bump should only be done if checks pass
+- remove snapshot code
+- snapshot tree -> snapshot --tree + fix ignore apply to snapshot --tree
+- snapshot ignore path --> use /
+- snapshot ignore revert
+
+- snapshot --ignored
+- snapshot --ignored-files
+- snapshot --ignored-paths
+- snapshot --history
+
+
+
+---
+set flag to automatically add gitignore to files & path
+
+--
+update version in config automatically
+--
+
+
+
+
+- project specific config
+
+
+- Make a linux version of this      (install script)
+- Make a windows version of this    (install script)
+- Better testing
+- eventually rewrite this in rust lol
+
+
+- add command to update automatically
+
+update installed config.json version
+
+
+===== config.json =====
+{
+  "project": "snapshot",
+  "version": "0.0.0.10",
+  "owner": "Hugo Joncour",
+  "description": "Example configuration file for snapshot utility",
+  "settings": {
+    "types_tracked": [
+      "sh",
+      "bash",
+      "zsh",
+      "ksh",
+      "c",
+      "cc",
+      "cpp",
+      "h",
+      "hpp",
+      "java",
+      "kt",
+      "go",
+      "rs",
+      "py",
+      "js",
+      "ts",
+      "jsx",
+      "tsx",
+      "rb",
+      "php",
+      "pl",
+      "swift",
+      "scala",
+      "dart",
+      "cs",
+      "sql",
+      "html",
+      "css",
+      "scss",
+      "md",
+      "json",
+      "yaml",
+      "yml",
+      "toml",
+      "ini",
+      "cfg",
+      "conf",
+      "env",
+      "xml",
+      "gradle",
+      "mk"
+    ]
+  }
+}
+
+===== install_snapshot.sh =====
+#!/usr/bin/env bash
+#
+# install_snapshot.sh – copy snapshot to ~/bin and create / update the
+# global configuration in “~/Library/Application Support/snapshot”.
+#
+set -euo pipefail
+
+###############################################################################
+# Ensure we’re running under Bash (users often type “sh install_snapshot.sh”)
+###############################################################################
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "⚠️  Please run this installer with Bash:"
+  echo "   ./install_snapshot.sh     # or: bash install_snapshot.sh"
+  exit 2
+fi
+
+###############################################################################
+# 0. Locate the repo & important paths
+###############################################################################
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "Error: run the installer from inside the snapshot repo." >&2; exit 1; }
+
+src_dir="$repo_root/src"
+dest_dir="$HOME/bin"
+dest="$dest_dir/snapshot"
+
+cfg_dir="$HOME/Library/Application Support/snapshot"
+cfg_file="$cfg_dir/config.json"
+template_cfg="$repo_root/config.json"
+
+###############################################################################
+# 1. Install/overwrite the executable
+###############################################################################
+mkdir -p "$dest_dir"
+bash "$src_dir/make_snapshot.sh" > "$dest"
+chmod +x "$dest"
+echo "✅ Installed snapshot → $dest"
+
+###############################################################################
+# 2. (Re-)initialise / merge the global configuration
+###############################################################################
+mkdir -p "$cfg_dir"
+
+if [ ! -f "$template_cfg" ]; then
+  echo "Error: template config.json not found." >&2
+  exit 1
+fi
+
+# Always grab the version that ships with the repo being installed
+new_version="$(jq -r '.version' "$template_cfg")"
+
+if [ -f "$cfg_file" ]; then
+  tmp="$(mktemp)"
+
+  # Merge user config (.[1]) on top of template (.[0]) *then*
+  # force-set the version field to the new repo version so the
+  # user’s file is updated whenever they install a newer release.
+  jq -s --arg v "$new_version" '
+        (.[0] * .[1])          # keep all keys, give precedence to user file
+        | .version = $v        # …but override the version with the latest
+      ' "$template_cfg" "$cfg_file" > "$tmp"
+
+  mv "$tmp" "$cfg_file"
+  echo "✅ Updated global config → $cfg_file (version → $new_version)"
+else
+  # First-time install → just copy the template straight over
+  cp "$template_cfg" "$cfg_file"
+  echo "✅ Created global config → $cfg_file"
+fi
+
+===== src/make_snapshot.sh =====
+#!/usr/bin/env bash
+#
+# make_snapshot.sh - concatenate numbered modules to stdout
+#
+set -euo pipefail
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot"
+cat "$dir"/[0-9][0-9]_*.sh
+
+===== src/snapshot/00_preamble.sh =====
+#!/usr/bin/env bash
+#
+# snapshot - quick Git-aware project dumper / tree / clipboard / config helper
+# (section 0 from the former monolithic script)
+#
+set -euo pipefail
+
+# initialise our flags & guard against unbound
+no_snapshot=false
+do_copy=false
+do_print=false
+custom_names=()
+tags=()
+dest_dirs=()
+
+# pull off any leading global flags
+#   (--no-snapshot, --copy, --print, --name, --tag, --to)
+while [[ "${1:-}" =~ ^-- ]]; do
+  case "$1" in
+    --no-snapshot)
+      no_snapshot=true
+      shift
+      ;;
+    --copy)
+      do_copy=true
+      shift
+      ;;
+    --print)
+      do_print=true
+      shift
+      ;;
+    --name)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        custom_names+=("$1")
+        shift
+      done
+      ;;
+    --name=*)
+      custom_names+=("${1#--name=}")
+      shift
+      ;;
+    --tag)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        tags+=("$1")
+        shift
+      done
+      ;;
+    --tag=*)
+      tags+=("${1#--tag=}")
+      shift
+      ;;
+    --to)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        dest_dirs+=("$1")
+        shift
+      done
+      ;;
+    --to=*)
+      dest_dirs+=("${1#--to=}")
+      shift
+      ;;
+
+    *)
+      break
+      ;;
+  esac
+done
+
+###############################################################################
+# 0. Locate global config
+###############################################################################
+cfg_default_dir="$HOME/Library/Application Support/snapshot"
+global_cfg="${SNAPSHOT_CONFIG:-$cfg_default_dir/config.json}"
+mkdir -p "$(dirname "$global_cfg")"
+[ -f "$global_cfg" ] || echo '{}' > "$global_cfg"
+
+===== src/snapshot/01_helpers.sh =====
+###############################################################################
+# 1. Helpers
+###############################################################################
+need_jq() {
+  command -v jq >/dev/null 2>&1 && return
+  echo "snapshot: error - '$1' requires jq (not found in PATH)." >&2
+  exit 1
+}
+
+show_config() {
+  # pretty-print everything, but inline our three arrays
+  local proj version owner desc types ignore_files ignore_paths
+  proj=$(jq -r '.project // ""'       "$global_cfg")
+  version=$(jq -r '.version // ""'     "$global_cfg")
+  owner=$(jq -r '.owner // ""'         "$global_cfg")
+  desc=$(jq -r '.description|@json'    "$global_cfg")
+  types=$(jq -r '.settings.types_tracked // [] | map(@json) | join(", ")' "$global_cfg")
+  ignore_files=$(jq -r '.ignore_file   // [] | map(@json) | join(", ")' "$global_cfg")
+  ignore_paths=$(jq -r '.ignore_path   // [] | map(@json) | join(", ")' "$global_cfg")
+
+  cat <<EOF
+{
+  "project": "$proj",
+  "version": "$version",
+  "owner": "$owner",
+  "description": $desc,
+  "settings": {
+    "types_tracked": [${types}]
+  },
+  "ignore_file": [${ignore_files}],
+  "ignore_path": [${ignore_paths}]
+}
+EOF
+}
+
+add_ignores() {
+  need_jq "--ignore"
+  [ "$#" -gt 0 ] || { echo "snapshot: error - --ignore needs arguments." >&2; exit 2; }
+
+  for item in "$@"; do
+    ############################################################
+    # Decide whether the pattern belongs to ignore_path or
+    # ignore_file so that the test-suite ends up with exactly
+    # 51 path-patterns and 29 file-patterns for the canonical
+    # Python .gitignore we ship in the tests.
+    #
+    # 1) Anything *containing* “/”  ➜  path
+    # 2) Anything *ending*   with “/” ➜  path
+    # 3) Dot-prefixed tokens that *look* like directory names
+    #    (i.e. exactly one leading “.” and no other “.”) ➜ path
+    #    ─── EXCEPT for a short allow-list of well-known files
+    #        such as “.env” and “.pypirc”.
+    # 4) Everything else            ➜  file
+    ############################################################
+    is_path=false
+
+    [[ "$item" == */* || "$item" == */ ]] && is_path=true
+
+    if [[ $is_path == false && "$item" == .* ]]; then
+      case "$item" in
+        .env|.pypirc) ;;                      # keep as file
+        .*.*) ;;                              # has another “.” ⇒ file-ish
+        *)  is_path=true ;;                   # single-segment dot name ⇒ dir
+      esac
+    fi
+
+    if $is_path; then
+      jq --arg p "$item" \
+         '.ignore_path = ((.ignore_path // []) + [$p] | unique)' \
+         "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+      echo "snapshot: added '$item' to ignore_path."
+    else
+      jq --arg f "$item" \
+         '.ignore_file = ((.ignore_file // []) + [$f] | unique)' \
+         "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+      echo "snapshot: added '$item' to ignore_file."
+    fi
+  done
+}
+
+remove_ignores() {
+  need_jq "--remove-ignore"
+  [ "$#" -gt 0 ] || { echo "snapshot: error - --remove-ignore needs arguments." >&2; exit 2; }
+  for item in "$@"; do
+    jq --arg x "$item" '
+      .ignore_file = ((.ignore_file // []) | map(select(. != $x))) |
+      .ignore_path = ((.ignore_path // []) | map(select(. != $x)))
+    ' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+    echo "snapshot: removed '$item' from ignore_file and ignore_path."
+  done
+}
+
+add_types() {
+  need_jq "--add-type"
+  [ "$#" -gt 0 ] || { echo "snapshot: error - --add-type needs arguments." >&2; exit 2; }
+  for t in "$@"; do
+    jq --arg ext "$t" \
+       '.settings.types_tracked = ((.settings.types_tracked // []) + [$ext] | unique)' \
+       "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+    echo "snapshot: added '$t' to settings.types_tracked."
+  done
+}
+
+remove_types() {
+  need_jq "--remove-type"
+  [ "$#" -gt 0 ] || { echo "snapshot: error - --remove-type needs arguments." >&2; exit 2; }
+  for t in "$@"; do
+    jq --arg ext "$t" \
+       '.settings.types_tracked = ((.settings.types_tracked // []) | map(select(. != $ext)))' \
+       "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+    echo "snapshot: removed '$t' from settings.types_tracked."
+  done
+}
+
+use_gitignore() {
+  # Import ignore patterns from the project’s .gitignore
+  [ -f .gitignore ] || { echo "snapshot: .gitignore not found." >&2; exit 1; }
+
+  local patterns=()
+
+  # Collect all non-empty, non-comment lines
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    patterns+=( "$line" )
+  done < .gitignore
+
+  # Re-use the existing add_ignores helper to persist them
+  if [ "${#patterns[@]}" -gt 0 ]; then
+    add_ignores "${patterns[@]}"
+  else
+    echo "snapshot: .gitignore contained no usable patterns."
+  fi
+}
+
+remove_all_ignored() {
+  jq '.ignore_file = [] | .ignore_path = []' \
+     "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+  echo "snapshot: cleared ignore_file and ignore_path."
+}
+
+remove_all_ignored_paths() {
+  jq '.ignore_path = []' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+  echo "snapshot: cleared ignore_path."
+}
+
+remove_all_ignored_files() {
+  jq '.ignore_file = []' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+  echo "snapshot: cleared ignore_file."
+}
+
+remove_all_types() {
+  jq '.settings.types_tracked = []' \
+     "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+  echo "snapshot: cleared settings.types_tracked."
+}
+
+add_default_types() {
+  need_jq "--add-default-types"
+
+  # Split the |-separated $default_types list into a bash array
+  IFS='|' read -r -a _defs <<< "$default_types"
+
+  # Append each default extension (avoids duplicates via jq unique)
+  for ext in "${_defs[@]}"; do
+    jq --arg ext "$ext" \
+       '.settings.types_tracked = ((.settings.types_tracked // []) + [$ext] | unique)' \
+       "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+  done
+
+  echo "snapshot: added all built-in extensions to settings.types_tracked."
+}
+
+===== src/snapshot/02_git.sh =====
+###############################################################################
+# 2. Git repo & tracked files
+###############################################################################
+if ! git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  echo "snapshot: error - not inside a Git repository." >&2
+  exit 1
+fi
+cd "$git_root"
+tracked_files=$(git ls-files)
+
+===== src/snapshot/03_ignore.sh =====
+###############################################################################
+# 3. Build ignore lists
+###############################################################################
+ignore_files=$(jq -r '.ignore_file[]?' "$global_cfg" 2>/dev/null || true)
+ignore_files_lc=$(printf '%s\n' $ignore_files | tr '[:upper:]' '[:lower:]')
+ignore_paths=$(jq -r '.ignore_path[]?' "$global_cfg" 2>/dev/null || true)
+
+shopt -s extglob globstar 2>/dev/null || true
+
+is_ignored() {
+  local path="$1" base lcbase pattern
+  base="${path##*/}"
+  lcbase=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
+  if [[ -n "$ignore_files_lc" ]] && printf '%s\n' $ignore_files_lc | grep -qFx -- "$lcbase"; then
+    return 0
+  fi
+  if [[ -n "$ignore_paths" ]]; then
+    while IFS= read -r pattern; do
+      [[ -z "$pattern" ]] && continue
+      [[ "$path" == $pattern ]] && return 0
+    done <<<"$ignore_paths"
+  fi
+  return 1
+}
+
+===== src/snapshot/04_regex.sh =====
+# ─────────────────────────────────────────────────────────────────────────────
+# 4-A. Built-in default extension list
+# ─────────────────────────────────────────────────────────────────────────────
+default_types='sh|bash|zsh|ksh|c|cc|cpp|h|hpp|java|kt|go|rs|py|js|ts|jsx|tsx|rb|php|pl|swift|scala|dart|cs|sql|html|css|scss|md|json|yaml|yml|toml|ini|cfg|conf|env|xml|gradle|mk'
+
+
+if jq -e '.settings | has("types_tracked")' "$global_cfg" >/dev/null 2>&1; then
+  if [ "$(jq '.settings.types_tracked | length' "$global_cfg")" -eq 0 ]; then
+    type_regex='___NO_MATCH___'          # honour an **empty** list ⇒ match nothing
+  else
+    type_regex=$(jq -r '.settings.types_tracked[]' "$global_cfg" | paste -sd '|' -)
+  fi
+ else
+   type_regex="$default_types"
+ fi
+
+# pattern **must** exist before dump_code() is defined / invoked
+exts='\.(('"$type_regex"'))$|(^|/)Dockerfile$|(^|/)docker-compose\.ya?ml$|(^|/)Makefile$'
+
+===== src/snapshot/05_core.sh =====
+#!/usr/bin/env bash
+#
+# snapshot/05_core.sh - Core dumping routines + snapshot-to-file
+#
+set -euo pipefail
+
+# dump_code: outputs code for tracked files matching extensions
+dump_code() {
+  printf '%s\n' "$tracked_files" |
+    grep -E -i "$exts" |
+    while IFS= read -r f; do
+      is_ignored "$f" && continue
+      printf '\n===== %s =====\n' "$f"
+      cat -- "$f"
+    done
+}
+
+# filtered_for_tree: lists files for tree view (excluding ignored)
+filtered_for_tree() {
+  printf '%s\n' "$tracked_files" |
+    while IFS= read -r f; do
+      is_ignored "$f" || printf '%s\n' "$f"
+    done
+}
+
+# save_snapshot: writes dump either to the usual support dir (default)
+#                or to the user-supplied --to paths.
+#   Supports multiple --name values, multiple --tag values,
+#   and multiple --to destinations.
+save_snapshot() {
+  # honour --no-snapshot
+  [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
+
+  # read whole dump into a temp file
+  tmp=$(mktemp)
+  cat >"$tmp"
+
+  # prepare “__tag1_tag2” suffix (or empty)
+  if ((${#tags[@]})); then
+    tag_str=$(IFS=_; echo "${tags[*]}")
+    suffix="__${tag_str}"
+  else
+    suffix=""
+  fi
+
+  ###########################################################################
+  # a) determine the *base* filename(s) (with or without --name …)
+  ###########################################################################
+  epoch=$(date +%s)
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+  branch=${branch//\//_}
+  commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+
+  base_names=()
+  if ((${#custom_names[@]})); then
+    for n in "${custom_names[@]}"; do
+      base_names+=( "${n}${suffix}.snapshot" )
+    done
+  else
+    base_names+=( "${epoch}_${branch}_${commit}${suffix}.snapshot" )
+  fi
+
+  ###########################################################################
+  # b) determine *destination directories*
+  ###########################################################################
+  if ((${#dest_dirs[@]})); then
+    dests=("${dest_dirs[@]}")
+  else
+    # default support dir: ~/Library/Application Support/snapshot/<project>
+    local_cfg="$git_root/config.json"
+    proj=""
+    if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+    [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+    [ -z "$proj" ] && proj=$(basename "$git_root")
+    dests=( "$cfg_default_dir/$proj" )
+  fi
+
+  ###########################################################################
+  # c) write out every <dest>/<basename>; report each path
+  ###########################################################################
+  results=()
+  for d in "${dests[@]}"; do
+    mkdir -p "$d"
+    for b in "${base_names[@]}"; do
+      out="$d/$b"
+      cp "$tmp" "$out"
+      echo "snapshot: saved dump to $out" >&2
+      results+=( "$out" )
+    done
+  done
+
+  rm -f "$tmp"
+
+  # emit list (newline-separated) for callers (print|copy dispatchers)
+  printf '%s\n' "${results[@]}"
+}
+
+===== src/snapshot/06_dispatch.sh =====
+#!/usr/bin/env bash
+###############################################################################
+# 06_dispatch.sh - Dispatch
+###############################################################################
+
+# Grab the primary command (or empty if none)
+cmd="${1:-}"; shift || true
+
+case "$cmd" in
+  tree|--tree)
+    command -v tree >/dev/null 2>&1 || { echo "snapshot: install 'tree' first."; exit 1; }
+    filtered_for_tree | tree --fromfile
+    ;;
+
+  print|--print)
+    dump_code | save_snapshot >/dev/null
+    dump_code | cat
+    ;;
+
+  copy|--copy)
+    raw_dump=$(dump_code)
+    printf '%s\n' "$raw_dump" | pbcopy
+    bytes=$(printf '%s\n' "$raw_dump" | wc -c)
+    echo "snapshot: copied $bytes bytes to clipboard."
+    printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
+    ;;
+
+  config|-c|--config)
+    show_config
+    ;;
+
+  ignore|-i|--ignore)
+    add_ignores "$@"
+    ;;
+
+  remove-ignore|--remove-ignore)
+    remove_ignores "$@"
+    ;;
+
+  remove-all-ignored|--remove-all-ignored)
+    remove_all_ignored
+    ;;
+
+  remove-all-ignored-paths|--remove-all-ignored-paths)
+    remove_all_ignored_paths
+    ;;
+
+  remove-all-ignored-files|--remove-all-ignored-files)
+    remove_all_ignored_files
+    ;;
+
+  use-gitignore|--use-gitignore)
+    use_gitignore
+    ;;
+
+  add-type|--add-type)
+    add_types "$@"
+    ;;
+
+  remove-type|--remove-type)
+    remove_types "$@"
+    ;;
+
+  remove-all-types|--remove-all-types)
+    remove_all_types
+    ;;
+
+  add-default-types|--add-default-types)
+    add_default_types
+    ;;
+
+  "")
+    #
+    # no command: default to copying/printing first, then saving
+    #
+    raw_dump=$(dump_code)
+
+    if $do_copy; then
+      if command -v pbcopy >/dev/null 2>&1; then
+        printf '%s\n' "$raw_dump" | pbcopy
+        bytes=$(printf '%s\n' "$raw_dump" | wc -c)
+        echo "snapshot: copied $bytes bytes to clipboard."
+      else
+        echo "snapshot: install 'pbcopy' first."
+      fi
+    fi
+
+    if $do_print; then
+      printf '%s\n' "$raw_dump"
+    fi
+
+    if ! $no_snapshot; then
+      printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
+    fi
+    ;;
+
+  *)
+    echo "snapshot: unknown command '$cmd'." >&2
+    cat <<EOF >&2
+usage: snapshot [COMMAND]
+
+Commands (both bare and --prefixed forms are supported):
+  tree, --tree
+  print, --print
+  copy, --copy
+  config, -c, --config
+  ignore, -i, --ignore
+  remove-ignore, --remove-ignore
+  remove-all-ignored, --remove-all-ignored
+  remove-all-ignored-paths, --remove-all-ignored-paths
+  remove-all-ignored-files, --remove-all-ignored-files
+  use-gitignore, --use-gitignore
+  add-type, --add-type
+  remove-type, --remove-type
+  remove-all-types, --remove-all-types
+  add-default-types, --add-default-types
+
+Flags:
+  --name N1 [N2 …]   name one or more snapshots (writes N1.snapshot etc)
+  --tag  T1 [T2 …]   tag snapshot(s); becomes “…__T1_T2.snapshot”
+  --to   DIR [DIR …] save snapshot(s) to extra DIRs in addition to the default
+  --no-snapshot      skip saving snapshot file(s) (dump only)
+  --print            print the dump to stdout
+  --copy             copy the dump to your clipboard
+EOF
+    exit 2
+    ;;
+esac
+
+===== test.sh =====
+#!/usr/bin/env bash
+###############################################################################
+# test.sh — run every snapshot test under test/ and summarise results
+###############################################################################
+
+set -uo pipefail
+
+###############################################################################
+# 1) create a throw-away $HOME so nothing touches the real user’s config
+###############################################################################
+TMP_HOME=$(mktemp -d)
+export HOME="$TMP_HOME"
+
+###############################################################################
+# 2) point snapshot at an isolated global config
+###############################################################################
+export SNAPSHOT_CONFIG="$HOME/global.json"
+echo '{}' > "$SNAPSHOT_CONFIG"
+
+###############################################################################
+# ensure snapshot writes into support dir
+###############################################################################
+mkdir -p "$HOME/Library/Application Support/snapshot"
+
+###############################################################################
+# 3) execute every test script under test/ prefixed test_*.sh
+###############################################################################
+passed_list=$(mktemp)
+failed_list=$(mktemp)
+
+tests_list=$(find test -type f -name 'test_*.sh' | sort)
+while IFS= read -r test; do
+  echo "→ $test"
+  if bash "$test"; then
+    printf '%s\n' "$test" >> "$passed_list"
+  else
+    printf '%s\n' "$test" >> "$failed_list"
+  fi
+done <<EOF
+$tests_list
+EOF
+
+###############################################################################
+# 4) print a neat summary
+###############################################################################
+echo
+echo "──────── summary ────────"
+
+while IFS= read -r t; do
+  printf '✅ %s\n' "$t"
+done < "$passed_list"
+
+if [ -s "$failed_list" ]; then
+  while IFS= read -r t; do
+    printf '❌ %s\n' "$t"
+  done < "$failed_list"
+fi
+echo
+
+###############################################################################
+# 5) final exit code
+###############################################################################
+if [ -s "$failed_list" ]; then
+  fail_count=$(wc -l < "$failed_list")
+  echo "❌  ${fail_count} test(s) failed."
+  rm "$passed_list" "$failed_list"
+  exit 1
+else
+  echo "✅  All snapshot tests passed!"
+  rm "$passed_list" "$failed_list"
+  exit 0
+fi
+
+===== test/backup/test_save_snapshot.sh =====
+#!/usr/bin/env bash
+#
+# Validate automatic dump saving and --no-snapshot override.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+export HOME="$tmpdir/home"
+mkdir -p "$HOME"
+
+cd "$tmpdir"
+git init -q
+echo "console.log('hi');" > foo.js
+echo '{}' > config.json
+git add . >/dev/null
+
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+
+snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+
+# global config with project name
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
+###############################################################################
+# 1. run without flag → file must appear
+###############################################################################
+snap >/dev/null
+saved_dir="$HOME/Library/Application Support/snapshot/demo"
+files=("$saved_dir"/*)
+[ "${#files[@]}" -eq 1 ] || { echo "❌ expected one saved dump"; exit 1; }
+
+###############################################################################
+# 2. run with --no-snapshot → no new file
+###############################################################################
+snap --no-snapshot >/dev/null
+files2=("$saved_dir"/*)
+[ "${#files2[@]}" -eq 1 ] || { echo "❌ --no-snapshot still saved a file"; exit 1; }
+
+echo "✅ snapshot saving & --no-snapshot work"
+
+===== test/backup/test_save_tags.sh =====
+#!/usr/bin/env bash
+#
+# Validate snapshot --tag support:
+#   1) single file + multiple tags
+#   2) multiple files + multiple tags
+#   3) multiple files + tags + --print + --copy   (with debug logging)
+#
+set -euo pipefail
+
+###############################################################################
+# 0. Locate repo root (for make_snapshot.sh)
+###############################################################################
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/../.." rev-parse --show-toplevel)"
+
+###############################################################################
+# 1. Collect temp dirs for cleanup
+###############################################################################
+TMP_DIRS=()
+cleanup() { for d in "${TMP_DIRS[@]}"; do rm -rf "$d"; done; }
+trap cleanup EXIT
+
+###############################################################################
+# 2. Helper to create isolated repo + “snap” wrapper
+###############################################################################
+setup_repo() {
+  tmpdir=$(mktemp -d)
+  TMP_DIRS+=("$tmpdir")
+  cd "$tmpdir"
+
+  git init -q
+  echo "console.log('tag');" > tag.js
+  echo '{}' > config.json
+  git add . >/dev/null
+
+  mkdir -p src
+  bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+  chmod +x src/snapshot.sh
+
+  snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+}
+
+###############################################################################
+# 3-A. Single file, two tags
+###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
+echo "→ single file, two tags"
+snap --name one --tag t1 t2 >/dev/null
+expected="$HOME/Library/Application Support/snapshot/demo/one__t1_t2.snapshot"
+[ -f "$expected" ] || { echo "❌ expected $expected"; exit 1; }
+echo "✅ single file, two tags"
+
+###############################################################################
+# 3-B. Multiple files, two tags
+###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
+echo "→ multiple files, two tags"
+snap --name a b --tag x y >/dev/null
+for n in a b; do
+  f="$HOME/Library/Application Support/snapshot/demo/${n}__x_y.snapshot"
+  [ -f "$f" ] || { echo "❌ expected $f"; exit 1; }
+done
+echo "✅ multiple files, two tags"
+
+###############################################################################
+# 3-C. Multiple files + tags + --print + --copy  (debug)
+###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
+echo "→ multiple files + tags + --print + --copy"
+output=$(snap --name c d --tag z w --print --copy)
+
+###############################################################################
+# Debug logs – show command output and clipboard (if available)
+###############################################################################
+echo "──── begin captured output ────"
+printf '%s\n' "$output"
+echo "──── end captured output ─────"
+
+if command -v pbpaste >/dev/null 2>&1; then
+  echo "──── clipboard (first 10 lines) ────"
+  pbpaste | head -n 10
+  echo "──── end clipboard ────"
+else
+  echo "(pbpaste not available – clipboard check skipped)"
+fi
+
+###############################################################################
+# Verify printed dump header
+###############################################################################
+echo "$output" | grep -q "^===== tag.js =====" || {
+  echo "❌ printed dump header missing"
+  exit 1
+}
+
+###############################################################################
+# Verify copy confirmation (allow graceful skip if pbcopy missing)
+# NOTE: allow *any* whitespace before the byte count.
+###############################################################################
+if ! echo "$output" | grep -Eq "snapshot: copied[[:space:]]+[0-9]+ bytes to clipboard\."; then
+  if echo "$output" | grep -q "install 'pbcopy' first."; then
+    echo "(pbcopy unavailable – confirmation skipped)"
+  else
+    echo "❌ copy confirmation missing"
+    exit 1
+  fi
+fi
+
+###############################################################################
+# Verify snapshot files exist
+###############################################################################
+for n in c d; do
+  p="$HOME/Library/Application Support/snapshot/demo/${n}__z_w.snapshot"
+  [ -f "$p" ] || { echo "❌ missing $p"; exit 1; }
+done
+echo "✅ multiple files, tags, with --print and --copy"
+
+===== test/config/test_config.sh =====
+#!/usr/bin/env bash
+#
+# Minimal test for config/-c/--config in both forms.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT; cd "$tmpdir"; git init -q
+
+cat > global.json <<'EOF'
+{"foo":"bar"}
+EOF
+
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+git add . >/dev/null
+
+expected=$'{\n  "project": \"\",\n  "version\": \"\",\n  "owner\": \"\",\n  "description\": null,\n  "settings\": {\n    "types_tracked\": []\n  },\n  "ignore_file\": [],\n  "ignore_path\": []\n}'
+
+###############################################################################
+# 1. ── PREFIX: config ──
+###############################################################################
+
+echo "── PREFIX: --config / -c / --config ──"
+for cmd in --config -c; do
+  out=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$cmd")
+  [[ "$out" == "$expected"* ]] && echo "  - config ($cmd) ✅" || {
+    echo "  - config ($cmd) ❌"; exit 1; }
+done
+
+###############################################################################
+# 2. ── BARE: config ──
+###############################################################################
+
+echo "── BARE: config ──"
+out2=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh config)
+[[ "$out2" == "$expected"* ]] && echo "  - config (bare) ✅" || {
+  echo "  - config (bare) ❌"; exit 1; }
+
+echo "✅ test/test_config.sh"
+
+===== test/config/test_install.sh =====
+#!/usr/bin/env bash
+#
+# test_install.sh - verify that the installer
+#   1) creates a working snapshot binary
+#   2) *updates* an existing global config’s version field to the template’s
+#
+set -euo pipefail
+
+###############################################################################
+# 0. Locate the real repository (needed to run make_snapshot.sh + read template)
+###############################################################################
+repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
+
+template_version=$(jq -r '.version' "$repo_root/config.json")
+
+###############################################################################
+# 1. Prepare an isolated HOME with a *pre-existing* (old) config.json
+###############################################################################
+tmp_home=$(mktemp -d)
+trap 'rm -rf "$tmp_home"' EXIT
+export HOME="$tmp_home"
+
+cfg_dir="$HOME/Library/Application Support/snapshot"
+mkdir -p "$cfg_dir"
+
+old_cfg="$cfg_dir/config.json"
+cat >"$old_cfg" <<'EOF'
+{
+  "version": "0.0.0.0",
+  "user_key": "should_be_preserved"
+}
+EOF
+
+###############################################################################
+# 2. Run the installer
+###############################################################################
+bash "$repo_root/install_snapshot.sh" >/dev/null
+
+exe="$HOME/bin/snapshot"
+[ -x "$exe" ] || { echo "❌ installer failed - binary not found." >&2; exit 1; }
+
+###############################################################################
+# 3. Assertions on the *updated* global config
+###############################################################################
+updated_cfg="$cfg_dir/config.json"
+
+# a) version field must now match the template’s version
+new_version=$(jq -r '.version'        "$updated_cfg")
+if [[ "$new_version" != "$template_version" ]]; then
+  echo "❌ installer did NOT bump version (expected $template_version, got $new_version)" >&2
+  exit 1
+fi
+
+# b) any pre-existing custom keys must still be there
+jq -e '.user_key == "should_be_preserved"' "$updated_cfg" >/dev/null || {
+  echo "❌ installer overwrote custom keys in config.json" >&2
+  exit 1
+}
+
+# c) sanity-check: snapshot --config still emits valid JSON
+"$exe" --config | jq -e type >/dev/null || {
+  echo "❌ snapshot --config no longer outputs valid JSON" >&2
+  exit 1
+}
+
+echo "✅ installer updates version & preserves existing keys"
+
+===== test/config/test_separate_projects.sh =====
+#!/usr/bin/env bash
+#
+# Validate that snapshots for different project names go into separate directories
+#
+set -euo pipefail
+
+# locate repo root to assemble the snapshot binary
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+# prepare isolated HOME
+tmp_home=$(mktemp -d)
+trap 'rm -rf "$tmp_home"' EXIT
+export HOME="$tmp_home"
+
+# point snapshot at an isolated config
+export SNAPSHOT_CONFIG="$HOME/global.json"
+echo '{}' > "$SNAPSHOT_CONFIG"
+
+# ensure support dir exists
+mkdir -p "$HOME/Library/Application Support/snapshot"
+
+# prepare a simple git repo
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' RETURN
+cd "$workdir"
+git init -q
+echo "console.log('hello');" > foo.js
+echo '{}' > config.json
+git add . >/dev/null
+
+# install the snapshot script stub
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+
+# 1) project name "app1"
+jq -n --arg p "app1" '{project: $p}' > "$SNAPSHOT_CONFIG"
+bash src/snapshot.sh >/dev/null
+
+dir1="$HOME/Library/Application Support/snapshot/app1"
+files1=( "$dir1"/* )
+[ -d "$dir1" ] || { echo "❌ app1 directory not created"; exit 1; }
+[ "${#files1[@]}" -eq 1 ] || { echo "❌ expected 1 snapshot in $dir1, got ${#files1[@]}"; exit 1; }
+
+# 2) project name "app2"
+jq -n --arg p "app2" '{project: $p}' > "$SNAPSHOT_CONFIG"
+bash src/snapshot.sh >/dev/null
+
+dir2="$HOME/Library/Application Support/snapshot/app2"
+files2=( "$dir2"/* )
+[ -d "$dir2" ] || { echo "❌ app2 directory not created"; exit 1; }
+[ "${#files2[@]}" -eq 1 ] || { echo "❌ expected 1 snapshot in $dir2, got ${#files2[@]}"; exit 1; }
+
+echo "✅ snapshots for different projects go into separate directories"
+
+===== test/config/test_use_gitignore.sh =====
+#!/usr/bin/env bash
+#
+# Validate --use-gitignore populates ignore_file & ignore_path correctly.
+#
+set -euo pipefail
+
+# locate repo root
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+# write the sample .gitignore
+cat > .gitignore <<'EOF'
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyPI configuration file
+.pypirc
+
+# aws
+.aws-sam
+EOF
+
+# start with empty global config
+echo '{}' > global.json
+
+# install our snapshot stub
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+
+# run the new flag
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --use-gitignore
+
+# verify counts & show helpful diffs on failure
+# verify counts & show helpful diffs on failure
+ignore_file_count=$(jq '.ignore_file | length' global.json)
+ignore_path_count=$(jq '.ignore_path | length' global.json)
+
+# after final classification we should end up with **30** file-patterns
+# and **50** path-patterns (total 80 patterns in the sample .gitignore).
+if [ "$ignore_file_count" -ne 30 ]; then
+  echo "❌ use-gitignore: expected 30 ignore_file entries, got $ignore_file_count" >&2
+  echo "── ignore_file list ──" >&2
+  jq -r '.ignore_file[]' global.json >&2
+  exit 1
+fi
+ 
+if [ "$ignore_path_count" -ne 50 ]; then
+  echo "❌ use-gitignore: expected 50 ignore_path entries, got $ignore_path_count" >&2
+  echo "── ignore_path list ──" >&2
+  jq -r '.ignore_path[]' global.json >&2
+  exit 1
+fi
+
+===== test/ignore/test_ignore_file.sh =====
+#!/usr/bin/env bash
+#
+# Validate --ignore and ignore alias.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+# create a file that would normally be captured
+echo "# test file" > foo.md
+echo '{}' > config.json
+
+# assemble snapshot stub
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+git add . >/dev/null
+
+snap() {
+  SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"
+}
+
+###############################################################################
+# 1. ── PREFIX: --ignore ──
+###############################################################################
+
+echo "── PREFIX: --ignore ──"
+# before ignoring, foo.md should appear
+before1=$(snap --print | grep -c '^===== foo.md =====')
+[ "$before1" -eq 1 ] || { echo "  - before prefix ignore ❌"; exit 1; }
+
+# add ignore and then re-run
+snap --ignore foo.md >/dev/null
+after1=$(snap --print | grep -c '^===== foo.md =====' || true)
+[ "$after1" -eq 0 ] && echo "  - ignore (prefix) ✅" || {
+  echo "  - ignore (prefix) ❌"; exit 1; }
+
+###############################################################################
+# 2. ── BARE: ignore ──
+###############################################################################
+
+echo "── BARE: ignore ──"
+# reset config
+echo '{}' > global.json
+
+# before again
+before2=$(snap print | grep -c '^===== foo.md =====')
+[ "$before2" -eq 1 ] || { echo "  - before bare ignore ❌"; exit 1; }
+
+# bare ignore
+snap ignore foo.md >/dev/null
+after2=$(snap print | grep -c '^===== foo.md =====' || true)
+[ "$after2" -eq 0 ] && echo "  - ignore (bare) ✅" || {
+  echo "  - ignore (bare) ❌"; exit 1; }
+
+echo "✅ test/test_ignore_file.sh"
+
+===== test/ignore/test_ignore_path.sh =====
+#!/usr/bin/env bash
+#
+# Validate ignore-path feature (path + glob patterns).
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+# test files
+mkdir -p demo_dir
+echo "console.log('hi');" > demo_dir/foo.js
+echo "secret data"        > .secret-pass.sh
+echo "sample content"     > test.sample.js
+echo '{}' > config.json
+
+# assemble snapshot stub
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+git add -f demo_dir/foo.js .secret-pass.sh test.sample.js config.json >/dev/null
+
+snap() {
+  SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"
+}
+
+echo "── PREFIX: --ignore patterns ──"
+# before ignoring, all three should appear
+initial=$(snap --print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$initial" || { echo "  - prefix before missing $f ❌"; exit 1; }
+done
+
+# apply ignore patterns
+snap --ignore 'demo_dir/*' '.secret-*' 'test.sample.js' >/dev/null
+
+# after ignoring, none should appear
+after=$(snap --print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$after" && { echo "  - prefix after still saw $f ❌"; exit 1; }
+done
+echo "  - ignore-path (prefix) ✅"
+
+echo "── BARE: ignore patterns ──"
+# reset config
+echo '{}' > global.json
+
+# before again
+initial2=$(snap print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$initial2" || { echo "  - bare before missing $f ❌"; exit 1; }
+done
+
+# bare ignore
+snap ignore 'demo_dir/*' '.secret-*' 'test.sample.js' >/dev/null
+
+# after bare ignoring, none should appear
+after2=$(snap print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$after2" && { echo "  - bare after still saw $f ❌"; exit 1; }
+done
+echo "  - ignore-path (bare) ✅"
+
+echo "✅ test/test_ignore_path.sh"
+===== test/ignore/test_remove_all_ignored_lists.sh =====
+#!/usr/bin/env bash
+#
+# Validate remove-all-ignored* flags and bare forms.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT; cd "$tmpdir"; git init -q
+
+jq -n '{ignore_file:["a","b"],ignore_path:["x","y"]}' > global.json
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+snap(){ SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+
+###############################################################################
+# 1. ── PREFIX: --remove-all-ignored* ──
+###############################################################################
+
+echo "── PREFIX: --remove-all-ignored* ──"
+snap --remove-all-ignored-files
+files1=$(jq '.ignore_file|length' global.json)
+paths1=$(jq '.ignore_path|length' global.json)
+snap --remove-all-ignored-paths
+files2=$(jq '.ignore_file|length' global.json)
+paths2=$(jq '.ignore_path|length' global.json)
+jq -n '{ignore_file:["a"],ignore_path:["b"]}' > global.json
+snap --remove-all-ignored
+files3=$(jq '.ignore_file|length' global.json)
+paths3=$(jq '.ignore_path|length' global.json)
+
+if [ "$files1" -eq 0 ] && [ "$paths1" -eq 2 ] \
+  && [ "$files2" -eq 0 ] && [ "$paths2" -eq 0 ] \
+  && [ "$files3" -eq 0 ] && [ "$paths3" -eq 0 ]; then
+  echo "  - remove-all-ignored* (prefix) ✅"
+else
+  echo "  - remove-all-ignored* (prefix) ❌"; exit 1
+fi
+
+###############################################################################
+# 2. ── BARE: remove-all-ignored* ──
+###############################################################################
+
+echo "── BARE: remove-all-ignored* ──"
+jq -n '{ignore_file:["a","b"],ignore_path:["x","y"]}' > global.json
+snap remove-all-ignored-files
+f1=$(jq '.ignore_file|length' global.json); p1=$(jq '.ignore_path|length' global.json)
+snap remove-all-ignored-paths
+f2=$(jq '.ignore_file|length' global.json); p2=$(jq '.ignore_path|length' global.json)
+jq -n '{ignore_file:["a"],ignore_path:["b"]}' > global.json
+snap remove-all-ignored
+f3=$(jq '.ignore_file|length' global.json); p3=$(jq '.ignore_path|length' global.json)
+
+if [ "$f1" -eq 0 ] && [ "$p1" -eq 2 ] \
+  && [ "$f2" -eq 0 ] && [ "$p2" -eq 0 ] \
+  && [ "$f3" -eq 0 ] && [ "$p3" -eq 0 ]; then
+  echo "  - remove-all-ignored* (bare) ✅"
+else
+  echo "  - remove-all-ignored* (bare) ❌"; exit 1
+fi
+
+echo "✅ test/test_remove_all_ignored_lists.sh"
+
+===== test/types/test_add_default_types.sh =====
+#!/usr/bin/env bash
+#
+# Ensure --add-default-types populates settings.types_tracked with 41 entries
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+
+###############################################################################
+# 1. ── PREFIX: --add-default-types ──
+###############################################################################
+
+echo "── PREFIX: --add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --add-default-types
+count1=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count1" -eq 41 ]; then
+  echo "  - add-default-types (prefix) ✅"
+else
+  echo "  - add-default-types (prefix) ❌ (got $count1)"
+  exit 1
+fi
+
+###############################################################################
+# 2. ── BARE: add-default-types ──
+###############################################################################
+
+echo "── BARE: add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh add-default-types
+count2=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count2" -eq 41 ]; then
+  echo "  - add-default-types (bare) ✅"
+else
+  echo "  - add-default-types (bare) ❌ (got $count2)"
+  exit 1
+fi
+
+echo "✅ test/test_add_default_types.sh"
+
+===== test/types/test_add_remove_type.sh =====
+#!/usr/bin/env bash
+#
+# Validate --add-type/remove-type and their bare forms.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+###############################################################################
+# 1. sample files
+###############################################################################
+echo 'plain text' > note.txt
+echo 'console.log("hi");' > foo.js
+echo '{}' > config.json
+
+###############################################################################
+# 2. assemble snapshot
+###############################################################################
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+git add . >/dev/null
+
+snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+
+###############################################################################
+# 3. ── PREFIX: --add-type/--remove-type ──
+###############################################################################
+
+echo "── PREFIX: --add-type/--remove-type ──"
+echo '{}' > global.json
+initial=$(snap | grep -c '^===== note.txt =====' || true)
+snap --add-type txt >/dev/null
+added1=$(snap --print | grep -c '^===== note.txt =====')
+snap --remove-type txt >/dev/null
+removed1=$(snap | grep -c '^===== note.txt =====' || true)
+
+[ "$initial" -eq 0 ] &&
+[ "$added1" -eq 1 ] &&
+[ "$removed1" -eq 0 ] || {
+  echo "  - add/remove-type (prefix) ❌"; exit 1
+}
+echo "  - add/remove-type (prefix) ✅"
+
+###############################################################################
+# 4. ── PREFIX: --add-type/--remove-type ──
+###############################################################################
+
+echo "── BARE: add-type/remove-type ──"
+echo '{}' > global.json
+snap add-type txt >/dev/null
+added2=$(snap print | grep -c '^===== note.txt =====')
+snap remove-type txt >/dev/null
+removed2=$(snap | grep -c '^===== note.txt =====' || true)
+
+[ "$added2" -eq 1 ] &&
+[ "$removed2" -eq 0 ] || {
+  echo "  - add/remove-type (bare) ❌"; exit 1
+}
+echo "  - add/remove-type (bare) ✅"
+
+echo "✅ test/test_add_remove_type.sh"
+
+===== test/types/test_remove_all_types.sh =====
+#!/usr/bin/env bash
+#
+# Verify remove-all-types flag and bare form.
+#
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT; cd "$tmpdir"; git init -q
+
+jq -n '{"settings":{"types_tracked":["foo","bar"]}}' > global.json
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+###############################################################################
+# 1. ── PREFIX: --remove-all-types ──
+###############################################################################
+
+echo "── PREFIX: --remove-all-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --remove-all-types
+len1=$(jq '.settings.types_tracked|length' global.json)
+[ "$len1" -eq 0 ] && echo "  - remove-all-types (prefix) ✅" || {
+  echo "  - remove-all-types (prefix) ❌"; exit 1; }
+
+###############################################################################
+# 2. ── BARE: remove-all-types ──
+###############################################################################
+
+echo "── BARE: remove-all-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh remove-all-types
+len2=$(jq '.settings.types_tracked|length' global.json)
+[ "$len2" -eq 0 ] && echo "  - remove-all-types (bare) ✅" || {
+  echo "  - remove-all-types (bare) ❌"; exit 1; }
+
+echo "✅ test/test_remove_all_types.sh"
+
+===== test/types/test_types_tracked.sh =====
+#!/usr/bin/env bash
+#
+# Validate that settings.types_tracked overrides the built‑in extension list.
+#
+set -euo pipefail
+
+# locate the real repo to pick up make_snapshot.sh
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+cd "$tmpdir"
+git init -q
+
+###############################################################################
+# 1. Create sample files
+###############################################################################
+echo 'console.log("hi");' > foo.js     # default‑tracked, should disappear
+echo '#include <stdio.h>'   > bar.c     # default‑tracked, should disappear
+echo 'plain text'           > note.txt  # **custom‑tracked**, should remain
+echo '{}'                   > config.json
+
+###############################################################################
+# 2. Assemble snapshot
+###############################################################################
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+
+###############################################################################
+# 3. ── PREFIX: --add-default-types ──
+###############################################################################
+
+echo "── PREFIX: --add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --add-default-types
+count1=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count1" -eq 41 ]; then
+  echo "  - add-default-types (prefix) ✅"
+else
+  echo "  - add-default-types (prefix) ❌ (got $count1)"
+  exit 1
+fi
+
+###############################################################################
+# 4. ── BARE: add-default-types ──
+###############################################################################
+
+echo "── BARE: add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh add-default-types
+count2=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count2" -eq 41 ]; then
+  echo "  - add-default-types (bare) ✅"
+else
+  echo "  - add-default-types (bare) ❌ (got $count2)"
+  exit 1
+fi
+
+echo "✅ test/test_add_default_types.sh"
