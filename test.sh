@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-#
-# test/run-all.sh — run every snapshot test and summarise results
-#
-set -uo pipefail           # (intentionally omit -e so we can collect failures)
+###############################################################################
+# test.sh — run every snapshot test under test/ and summarise results
+###############################################################################
+
+set -uo pipefail
 
 ###############################################################################
 # 1) create a throw-away $HOME so nothing touches the real user’s config
@@ -16,43 +17,56 @@ export HOME="$TMP_HOME"
 export SNAPSHOT_CONFIG="$HOME/global.json"
 echo '{}' > "$SNAPSHOT_CONFIG"
 
-# snapshot will also write dumps to the usual support directory
+###############################################################################
+# ensure snapshot writes into support dir
+###############################################################################
 mkdir -p "$HOME/Library/Application Support/snapshot"
 
 ###############################################################################
-# 3) execute every test script, tracking which ones pass / fail
+# 3) execute every test script under test/ prefixed test_*.sh
 ###############################################################################
-passed=()
-failed=()
+passed_list=$(mktemp)
+failed_list=$(mktemp)
 
-for test in test/test_*.sh; do
+tests_list=$(find test -type f -name 'test_*.sh' | sort)
+while IFS= read -r test; do
   echo "→ $test"
   if bash "$test"; then
-    passed+=("$test")
+    printf '%s\n' "$test" >> "$passed_list"
   else
-    failed+=("$test")
+    printf '%s\n' "$test" >> "$failed_list"
   fi
-done
+done <<EOF
+$tests_list
+EOF
 
 ###############################################################################
 # 4) print a neat summary
 ###############################################################################
 echo
 echo "──────── summary ────────"
-for t in "${passed[@]}";  do printf '✅ %s\n' "$t"; done
 
-if ((${#failed[@]})); then
-  for t in "${failed[@]}";  do printf '❌ %s\n' "$t"; done
+while IFS= read -r t; do
+  printf '✅ %s\n' "$t"
+done < "$passed_list"
+
+if [ -s "$failed_list" ]; then
+  while IFS= read -r t; do
+    printf '❌ %s\n' "$t"
+  done < "$failed_list"
 fi
 echo
 
 ###############################################################################
 # 5) final exit code
 ###############################################################################
-if ((${#failed[@]} == 0)); then
-  echo "✅  All snapshot tests passed!"
-  exit 0
-else
-  echo "❌  ${#failed[@]} test(s) failed."
+if [ -s "$failed_list" ]; then
+  fail_count=$(wc -l < "$failed_list")
+  echo "❌  ${fail_count} test(s) failed."
+  rm "$passed_list" "$failed_list"
   exit 1
+else
+  echo "✅  All snapshot tests passed!"
+  rm "$passed_list" "$failed_list"
+  exit 0
 fi
