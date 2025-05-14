@@ -76,9 +76,13 @@ case "$cmd" in
     raw_dump=$(dump_code)
 
     if $do_copy; then
-      printf '%s\n' "$raw_dump" | pbcopy
-      bytes=$(printf '%s\n' "$raw_dump" | wc -c)
-      echo "snapshot: copied $bytes bytes to clipboard."
+      if command -v pbcopy >/dev/null 2>&1; then
+        printf '%s\n' "$raw_dump" | pbcopy
+        bytes=$(printf '%s\n' "$raw_dump" | wc -c)
+        echo "snapshot: copied $bytes bytes to clipboard."
+      else
+        echo "snapshot: install 'pbcopy' first."
+      fi
     fi
 
     if $do_print; then
