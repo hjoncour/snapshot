@@ -1,8 +1,7 @@
+#!/usr/bin/env bash
 ###############################################################################
-# 06_dispatch.sh – Dispatch
+# 06_dispatch.sh - Dispatch
 ###############################################################################
-# No explicit "code" subcommand: running `snapshot` with no argument
-# does the code snapshot (dump+save), with optional --print/--copy flags.
 
 # Grab the primary command (or empty if none)
 cmd="${1:-}"; shift || true
@@ -14,16 +13,16 @@ case "$cmd" in
     ;;
 
   print|--print)
-    SNAPSHOT_FILE=$(dump_code | save_snapshot)
-    cat "$SNAPSHOT_FILE"
+    dump_code | save_snapshot >/dev/null
+    dump_code | cat
     ;;
 
   copy|--copy)
-    SNAPSHOT_FILE=$(dump_code | save_snapshot)
-    command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: install 'pbcopy' first."; exit 1; }
-    bytes=$(wc -c <"$SNAPSHOT_FILE")
-    pbcopy <"$SNAPSHOT_FILE"
+    raw_dump=$(dump_code)
+    printf '%s\n' "$raw_dump" | pbcopy
+    bytes=$(printf '%s\n' "$raw_dump" | wc -c)
     echo "snapshot: copied $bytes bytes to clipboard."
+    printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
     ;;
 
   config|-c|--config)
@@ -71,14 +70,23 @@ case "$cmd" in
     ;;
 
   "")
-    # default: dump & save, then handle --print/--copy
-    SNAPSHOT_FILE=$(dump_code | save_snapshot)
-    $do_print && cat "$SNAPSHOT_FILE"
+    #
+    # no command: default to copying/printing first, then saving
+    #
+    raw_dump=$(dump_code)
+
     if $do_copy; then
-      command -v pbcopy >/dev/null 2>&1 || { echo "snapshot: install 'pbcopy' first."; exit 1; }
-      bytes=$(wc -c <"$SNAPSHOT_FILE")
-      pbcopy <"$SNAPSHOT_FILE"
+      printf '%s\n' "$raw_dump" | pbcopy
+      bytes=$(printf '%s\n' "$raw_dump" | wc -c)
       echo "snapshot: copied $bytes bytes to clipboard."
+    fi
+
+    if $do_print; then
+      printf '%s\n' "$raw_dump"
+    fi
+
+    if ! $no_snapshot; then
+      printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
     fi
     ;;
 
@@ -104,7 +112,10 @@ Commands (both bare and --prefixed forms are supported):
   add-default-types, --add-default-types
 
 Flags:
-  --no-snapshot    skip saving snapshot file (dump only)
+  --name N1 [N2 …]   name one or more snapshots (writes N1.snapshot etc)
+  --no-snapshot      skip saving snapshot file(s) (dump only)
+  --print            print the dump to stdout
+  --copy             copy the dump to your clipboard
 EOF
     exit 2
     ;;
