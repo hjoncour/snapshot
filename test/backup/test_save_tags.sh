@@ -1,69 +1,127 @@
 #!/usr/bin/env bash
 #
-# test_tags.sh — Validate --tag flag functionality
+# Validate snapshot --tag support:
+#   1) single file + multiple tags
+#   2) multiple files + multiple tags
+#   3) multiple files + tags + --print + --copy   (with debug logging)
 #
 set -euo pipefail
 
 ###############################################################################
-# Setup: isolated HOME and config
+# 0. Locate repo root (for make_snapshot.sh)
 ###############################################################################
-tmp_home=$(mktemp -d)
-trap 'rm -rf "$tmp_home"' EXIT
-export HOME="$tmp_home"
-
-# Prepare support directory and global config
-mkdir -p "$HOME/Library/Application Support/snapshot"
-export SNAPSHOT_CONFIG="$HOME/global.json"
-echo '{ "project":"demo" }' > "$SNAPSHOT_CONFIG"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/../.." rev-parse --show-toplevel)"
 
 ###############################################################################
-# Initialize a sample Git repository with a test file
+# 1. Collect temp dirs for cleanup
 ###############################################################################
-cd "$tmp_home"
-git init -q
-echo "console.log('test');" > foo.js
-echo '{}' > config.json
-git add . >/dev/null
+TMP_DIRS=()
+cleanup() { for d in "${TMP_DIRS[@]}"; do rm -rf "$d"; done; }
+trap cleanup EXIT
 
 ###############################################################################
-# Install the snapshot stub
+# 2. Helper to create isolated repo + “snap” wrapper
 ###############################################################################
-repo_root="$(git -C "$PWD" rev-parse --show-toplevel)"
-mkdir -p src
-bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
-chmod +x src/snapshot.sh
+setup_repo() {
+  tmpdir=$(mktemp -d)
+  TMP_DIRS+=("$tmpdir")
+  cd "$tmpdir"
 
-snap() { SNAPSHOT_CONFIG="$SNAPSHOT_CONFIG" bash src/snapshot.sh "$@"; }
+  git init -q
+  echo "console.log('tag');" > tag.js
+  echo '{}' > config.json
+  git add . >/dev/null
+
+  mkdir -p src
+  bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+  chmod +x src/snapshot.sh
+
+  snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+}
 
 ###############################################################################
-# 1) Single file, two tags
+# 3-A. Single file, two tags
 ###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
 echo "→ single file, two tags"
 snap --name one --tag t1 t2 >/dev/null
-file1="$HOME/Library/Application Support/snapshot/demo/one__t1_t2.snapshot"
-[ -f "$file1" ] || { echo "❌ expected $file1"; exit 1; }
+expected="$HOME/Library/Application Support/snapshot/demo/one__t1_t2.snapshot"
+[ -f "$expected" ] || { echo "❌ expected $expected"; exit 1; }
+echo "✅ single file, two tags"
 
 ###############################################################################
-# 2) Multiple files, two tags
+# 3-B. Multiple files, two tags
 ###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
 echo "→ multiple files, two tags"
 snap --name a b --tag x y >/dev/null
-fileA="$HOME/Library/Application Support/snapshot/demo/a__x_y.snapshot"
-fileB="$HOME/Library/Application Support/snapshot/demo/b__x_y.snapshot"
-[ -f "$fileA" ] || { echo "❌ expected $fileA"; exit 1; }
-[ -f "$fileB" ] || { echo "❌ expected $fileB"; exit 1; }
+for n in a b; do
+  f="$HOME/Library/Application Support/snapshot/demo/${n}__x_y.snapshot"
+  [ -f "$f" ] || { echo "❌ expected $f"; exit 1; }
+done
+echo "✅ multiple files, two tags"
 
 ###############################################################################
-# 3) Multiple files, tags, --print and --copy
+# 3-C. Multiple files + tags + --print + --copy  (debug)
 ###############################################################################
+setup_repo
+cat > global.json <<'EOF'
+{ "project":"demo" }
+EOF
+
 echo "→ multiple files + tags + --print + --copy"
-output="$(snap --name c d --tag z w --print --copy)"
-fileC="$HOME/Library/Application Support/snapshot/demo/c__z_w.snapshot"
-fileD="$HOME/Library/Application Support/snapshot/demo/d__z_w.snapshot"
-[ -f "$fileC" ] || { echo "❌ expected $fileC"; exit 1; }
-[ -f "$fileD" ] || { echo "❌ expected $fileD"; exit 1; }
+output=$(snap --name c d --tag z w --print --copy)
 
-echo "$output" | grep -q '^===== foo.js =====' || { echo "❌ missing dump"; exit 1; }
-echo "$output" | grep -q 'snapshot: copied [0-9]\+ bytes to clipboard' || { echo "❌ missing copy confirmation"; exit 1; }
+###############################################################################
+# Debug logs – show command output and clipboard (if available)
+###############################################################################
+echo "──── begin captured output ────"
+printf '%s\n' "$output"
+echo "──── end captured output ─────"
 
-echo "✅ tag tests passed"
+if command -v pbpaste >/dev/null 2>&1; then
+  echo "──── clipboard (first 10 lines) ────"
+  pbpaste | head -n 10
+  echo "──── end clipboard ────"
+else
+  echo "(pbpaste not available – clipboard check skipped)"
+fi
+
+###############################################################################
+# Verify printed dump header
+###############################################################################
+echo "$output" | grep -q "^===== tag.js =====" || {
+  echo "❌ printed dump header missing"
+  exit 1
+}
+
+###############################################################################
+# Verify copy confirmation (allow graceful skip if pbcopy missing)
+# NOTE: allow *any* whitespace before the byte count.
+###############################################################################
+if ! echo "$output" | grep -Eq "snapshot: copied[[:space:]]+[0-9]+ bytes to clipboard\."; then
+  if echo "$output" | grep -q "install 'pbcopy' first."; then
+    echo "(pbcopy unavailable – confirmation skipped)"
+  else
+    echo "❌ copy confirmation missing"
+    exit 1
+  fi
+fi
+
+###############################################################################
+# Verify snapshot files exist
+###############################################################################
+for n in c d; do
+  p="$HOME/Library/Application Support/snapshot/demo/${n}__z_w.snapshot"
+  [ -f "$p" ] || { echo "❌ missing $p"; exit 1; }
+done
+echo "✅ multiple files, tags, with --print and --copy"
