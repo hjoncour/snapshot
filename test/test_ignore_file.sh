@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
-# Validate the --ignore feature.
+# Validate --ignore and ignore alias.
 #
 set -euo pipefail
 
-# locate real repo
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
 
@@ -15,26 +14,49 @@ git init -q
 
 # create a file that would normally be captured
 echo "# test file" > foo.md
-echo '{}' > config.json             # blank project config
+echo '{}' > config.json
 
-# copy snapshot
+# assemble snapshot stub
 mkdir -p src
 bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
 chmod +x src/snapshot.sh
-git add . >/dev/null                # so git ls-files sees them
+git add . >/dev/null
 
-# 1. confirm foo.md is present
-before=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print | grep -c '^===== foo.md =====')
-[ "$before" -eq 1 ] || { echo "❌ setup error - foo.md not found." >&2; exit 1; }
+snap() {
+  SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"
+}
 
-# 2. ignore it
-SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --ignore foo.md
+###############################################################################
+# 1. ── PREFIX: --ignore ──
+###############################################################################
 
-# 3. run again, confirm foo.md gone
-after=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print | grep -c '^===== foo.md =====' || true)
-if [ "$after" -eq 0 ]; then
-  echo "✅ ignore_file works (foo.md skipped)"
-else
-  echo "❌ ignore_file failed - foo.md still present" >&2
-  exit 1
-fi
+echo "── PREFIX: --ignore ──"
+# before ignoring, foo.md should appear
+before1=$(snap --print | grep -c '^===== foo.md =====')
+[ "$before1" -eq 1 ] || { echo "  - before prefix ignore ❌"; exit 1; }
+
+# add ignore and then re-run
+snap --ignore foo.md >/dev/null
+after1=$(snap --print | grep -c '^===== foo.md =====' || true)
+[ "$after1" -eq 0 ] && echo "  - ignore (prefix) ✅" || {
+  echo "  - ignore (prefix) ❌"; exit 1; }
+
+###############################################################################
+# 2. ── BARE: ignore ──
+###############################################################################
+
+echo "── BARE: ignore ──"
+# reset config
+echo '{}' > global.json
+
+# before again
+before2=$(snap print | grep -c '^===== foo.md =====')
+[ "$before2" -eq 1 ] || { echo "  - before bare ignore ❌"; exit 1; }
+
+# bare ignore
+snap ignore foo.md >/dev/null
+after2=$(snap print | grep -c '^===== foo.md =====' || true)
+[ "$after2" -eq 0 ] && echo "  - ignore (bare) ✅" || {
+  echo "  - ignore (bare) ❌"; exit 1; }
+
+echo "✅ test/test_ignore_file.sh"
