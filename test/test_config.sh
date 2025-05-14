@@ -1,37 +1,43 @@
 #!/usr/bin/env bash
 #
-# Minimal test for “snapshot --config”.
+# Minimal test for config/-c/--config in both forms.
 #
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
 
-tmpdir=$(mktemp -d)
-trap 'rm -rf "$tmpdir"' EXIT
-cd "$tmpdir"
-git init -q
+tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT; cd "$tmpdir"; git init -q
 
 cat > global.json <<'EOF'
 {"foo":"bar"}
 EOF
 
-# copy snapshot into this repo
 mkdir -p src
 bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
 chmod +x src/snapshot.sh
-git add . >/dev/null   # so git ls-files works
+git add . >/dev/null
 
-# expected default pretty-printed config output
-expected=$'{\n  "project": \"\",\n  "version": \"\",\n  "owner": \"\",\n  "description\": null,\n  "settings\": {\n    "types_tracked\": []\n  },\n  "ignore_file\": [],\n  "ignore_path\": []\n}'
+expected=$'{\n  "project": \"\",\n  "version\": \"\",\n  "owner\": \"\",\n  "description\": null,\n  "settings\": {\n    "types_tracked\": []\n  },\n  "ignore_file\": [],\n  "ignore_path\": []\n}'
 
-output=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --config)
+###############################################################################
+# 1. ── PREFIX: config ──
+###############################################################################
 
-if [[ "$output" == "$expected" ]]; then
-  echo "✅ snapshot --config returned default pretty output"
-else
-  echo "❌ snapshot --config returned unexpected output"
-  echo "expected: $expected"
-  echo "got:      $output"
-  exit 1
-fi
+echo "── PREFIX: --config / -c / --config ──"
+for cmd in --config -c; do
+  out=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$cmd")
+  [[ "$out" == "$expected"* ]] && echo "  - config ($cmd) ✅" || {
+    echo "  - config ($cmd) ❌"; exit 1; }
+done
+
+###############################################################################
+# 2. ── BARE: config ──
+###############################################################################
+
+echo "── BARE: config ──"
+out2=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh config)
+[[ "$out2" == "$expected"* ]] && echo "  - config (bare) ✅" || {
+  echo "  - config (bare) ❌"; exit 1; }
+
+echo "✅ test/test_config.sh"

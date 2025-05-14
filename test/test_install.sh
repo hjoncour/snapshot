@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# test_install.sh – verify that the installer
+# test_install.sh - verify that the installer
 #   1) creates a working snapshot binary
 #   2) *updates* an existing global config’s version field to the template’s
 #
@@ -37,7 +37,7 @@ EOF
 bash "$repo_root/install_snapshot.sh" >/dev/null
 
 exe="$HOME/bin/snapshot"
-[ -x "$exe" ] || { echo "❌ installer failed – binary not found." >&2; exit 1; }
+[ -x "$exe" ] || { echo "❌ installer failed - binary not found." >&2; exit 1; }
 
 ###############################################################################
 # 3. Assertions on the *updated* global config

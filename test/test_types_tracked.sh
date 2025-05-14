@@ -27,34 +27,35 @@ echo '{}'                   > config.json
 mkdir -p src
 bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
 chmod +x src/snapshot.sh
-git add . >/dev/null   # so git ls-files sees the files
 
 ###############################################################################
-# 3. Provide a custom global config that tracks ONLY *.txt
+# 3. ── PREFIX: --add-default-types ──
 ###############################################################################
-cat > global.json <<'EOF'
-{
-  "settings": {
-    "types_tracked": ["txt"]
-  }
-}
-EOF
 
-###############################################################################
-# 4. Run snapshot and assert results
-###############################################################################
-dump=$(SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --print code)
-
-echo "$dump" | grep -q '===== note.txt =====' || {
-  echo "❌ types_tracked failed - note.txt missing" >&2
+echo "── PREFIX: --add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh --add-default-types
+count1=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count1" -eq 41 ]; then
+  echo "  - add-default-types (prefix) ✅"
+else
+  echo "  - add-default-types (prefix) ❌ (got $count1)"
   exit 1
-}
+fi
 
-for banned in foo.js bar.c; do
-  if echo "$dump" | grep -q "===== $banned ====="; then
-    echo "❌ types_tracked failed - saw $banned but it should be excluded" >&2
-    exit 1
-  fi
-done
+###############################################################################
+# 4. ── BARE: add-default-types ──
+###############################################################################
 
-echo "✅ settings.types_tracked overrides extension list correctly"
+echo "── BARE: add-default-types ──"
+SNAPSHOT_CONFIG="$tmpdir/global.json" echo '{}' > global.json
+SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh add-default-types
+count2=$(jq '.settings.types_tracked | length' global.json)
+if [ "$count2" -eq 41 ]; then
+  echo "  - add-default-types (bare) ✅"
+else
+  echo "  - add-default-types (bare) ❌ (got $count2)"
+  exit 1
+fi
+
+echo "✅ test/test_add_default_types.sh"

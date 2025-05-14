@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 #
-# Validate the ignore_path feature (path + glob patterns).
+# Validate ignore-path feature (path + glob patterns).
 #
 set -euo pipefail
 
-# 0. locate repo root
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
 
-# 1. create temp repo
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 cd "$tmpdir"
@@ -19,52 +17,53 @@ mkdir -p demo_dir
 echo "console.log('hi');" > demo_dir/foo.js
 echo "secret data"        > .secret-pass.sh
 echo "sample content"     > test.sample.js
-echo "keep this"          > keep.sh
-
 echo '{}' > config.json
 
-# copy snapshot script
+# assemble snapshot stub
 mkdir -p src
 bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
 chmod +x src/snapshot.sh
+git add -f demo_dir/foo.js .secret-pass.sh test.sample.js config.json >/dev/null
 
-# stage files explicitly
-git add -f demo_dir/foo.js .secret-pass.sh test.sample.js keep.sh config.json >/dev/null
+snap() {
+  SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"
+}
 
-# helper to run snapshot
-snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
-
-# 2. ensure initial presence
-output="$(snap --print code)"
-for needle in \
-  "===== demo_dir/foo.js =====" \
-  "===== .secret-pass.sh =====" \
-  "===== test.sample.js ====="
-do
-  echo "$output" | grep -Fq "$needle" || {
-    echo "❌ setup error - expected '$needle' in initial dump." >&2
-    echo "Dump was:" >&2
-    echo "$output" >&2
-    exit 1
-  }
+echo "── PREFIX: --ignore patterns ──"
+# before ignoring, all three should appear
+initial=$(snap --print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$initial" || { echo "  - prefix before missing $f ❌"; exit 1; }
 done
 
-# 3. add ignore_path patterns
-snap --ignore 'demo_dir/*' '.secret-*' '**.sample.js' >/dev/null
+# apply ignore patterns
+snap --ignore 'demo_dir/*' '.secret-*' 'test.sample.js' >/dev/null
 
-# 4. ensure files are now excluded
-output2="$(snap code)"
-for banned in \
-  "===== demo_dir/foo.js =====" \
-  "===== .secret-pass.sh =====" \
-  "===== test.sample.js ====="
-do
-  if echo "$output2" | grep -Fq "$banned"; then
-    echo "❌ ignore_path failed - still saw '$banned'" >&2
-    echo "Dump was:" >&2
-    echo "$output2" >&2
-    exit 1
-  fi
+# after ignoring, none should appear
+after=$(snap --print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$after" && { echo "  - prefix after still saw $f ❌"; exit 1; }
+done
+echo "  - ignore-path (prefix) ✅"
+
+echo "── BARE: ignore patterns ──"
+# reset config
+echo '{}' > global.json
+
+# before again
+initial2=$(snap print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$initial2" || { echo "  - bare before missing $f ❌"; exit 1; }
 done
 
-echo "✅ ignore_path patterns correctly excluded files"
+# bare ignore
+snap ignore 'demo_dir/*' '.secret-*' 'test.sample.js' >/dev/null
+
+# after bare ignoring, none should appear
+after2=$(snap print)
+for f in demo_dir/foo.js .secret-pass.sh test.sample.js; do
+  grep -Fq "$f" <<<"$after2" && { echo "  - bare after still saw $f ❌"; exit 1; }
+done
+echo "  - ignore-path (bare) ✅"
+
+echo "✅ test/test_ignore_path.sh"

@@ -36,7 +36,7 @@ chmod +x src/snapshot.sh
 
 # 1) project name "app1"
 jq -n --arg p "app1" '{project: $p}' > "$SNAPSHOT_CONFIG"
-bash src/snapshot.sh code >/dev/null
+bash src/snapshot.sh >/dev/null
 
 dir1="$HOME/Library/Application Support/snapshot/app1"
 files1=( "$dir1"/* )
@@ -45,7 +45,7 @@ files1=( "$dir1"/* )
 
 # 2) project name "app2"
 jq -n --arg p "app2" '{project: $p}' > "$SNAPSHOT_CONFIG"
-bash src/snapshot.sh code >/dev/null
+bash src/snapshot.sh >/dev/null
 
 dir2="$HOME/Library/Application Support/snapshot/app2"
 files2=( "$dir2"/* )
