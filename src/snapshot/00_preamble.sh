@@ -11,8 +11,10 @@ do_copy=false
 do_print=false
 custom_names=()
 tags=()
+dest_dirs=()
 
-# pull off any leading global flags (--no-snapshot, --copy, --print, --name, --tag)
+# pull off any leading global flags
+#   (--no-snapshot, --copy, --print, --name, --tag, --to)
 while [[ "${1:-}" =~ ^-- ]]; do
   case "$1" in
     --no-snapshot)
@@ -49,6 +51,18 @@ while [[ "${1:-}" =~ ^-- ]]; do
       tags+=("${1#--tag=}")
       shift
       ;;
+    --to)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        dest_dirs+=("$1")
+        shift
+      done
+      ;;
+    --to=*)
+      dest_dirs+=("${1#--to=}")
+      shift
+      ;;
+
     *)
       break
       ;;
