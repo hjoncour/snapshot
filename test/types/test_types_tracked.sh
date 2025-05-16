@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Validate that settings.types_tracked overrides the built‑in extension list.
+# Validate that settings.types_tracked overrides the built-in extension list.
 #
 set -euo pipefail
 
@@ -16,9 +16,9 @@ git init -q
 ###############################################################################
 # 1. Create sample files
 ###############################################################################
-echo 'console.log("hi");' > foo.js     # default‑tracked, should disappear
-echo '#include <stdio.h>'   > bar.c     # default‑tracked, should disappear
-echo 'plain text'           > note.txt  # **custom‑tracked**, should remain
+echo 'console.log("hi");' > foo.js     # default-tracked, should disappear
+echo '#include <stdio.h>'   > bar.c     # default-tracked, should disappear
+echo 'plain text'           > note.txt  # **custom-tracked**, should remain
 echo '{}'                   > config.json
 
 ###############################################################################

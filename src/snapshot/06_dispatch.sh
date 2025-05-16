@@ -23,9 +23,13 @@ case "$cmd" in
 
   copy|--copy)
     raw_dump=$(dump_code)
-    printf '%s\n' "$raw_dump" | pbcopy
-    bytes=$(printf '%s\n' "$raw_dump" | wc -c)
-    echo "snapshot: copied $bytes bytes to clipboard."
+    if command -v pbcopy >/dev/null 2>&1; then
+      printf '%s\n' "$raw_dump" | pbcopy
+      bytes=$(printf '%s\n' "$raw_dump" | wc -c)
+      echo "snapshot: copied $bytes bytes to clipboard."
+    else
+      echo "snapshot: install 'pbcopy' first."
+    fi
     printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
     ;;
 
@@ -35,8 +39,8 @@ case "$cmd" in
   projects|--projects)
     # Defaults
     want_details=false
-    sort_dir="asc"      # asc | desc
-    sort_key="name"     # name | size | date
+    sort_dir="asc"
+    sort_key="name"
     separators_override="__unset__"
 
     # Parse positional options (order-agnostic)
@@ -51,12 +55,9 @@ case "$cmd" in
       shift
     done
 
-    #########################################################################
-    # Determine final separator preference
-    #########################################################################
+    # Final separator preference
     cfg_sep=$(jq -r '.settings.preferences.separators // "true"' \
                  "$global_cfg" 2>/dev/null || echo "true")
-
     if   [[ $separators_override == "on"  ]]; then use_sep=true
     elif [[ $separators_override == "off" ]]; then use_sep=false
     else                                           use_sep=$cfg_sep
@@ -68,20 +69,11 @@ case "$cmd" in
 
     projects=()
 
-    #########################################################################
-    # Build list
-    #########################################################################
     while IFS= read -r d; do
       proj=$(basename "$d")
-
       if $want_details; then
-        # How many snapshot files?
         num=$(find "$d" -type f -name '*.snapshot' | wc -l | tr -d ' ')
-
-        # Folder size (KiB)
         size_kb=$(du -sk "$d" | awk '{print $1}')
-
-        # Newest snapshot file (if any)
         latest_file=$(ls -1t "$d"/*.snapshot 2>/dev/null | head -n1 || true)
         if [[ -n "$latest_file" ]]; then
           epoch=$(stat -f "%m" "$latest_file" 2>/dev/null \
@@ -98,9 +90,7 @@ case "$cmd" in
       fi
     done < <(find "$base_dir" -mindepth 1 -maxdepth 1 -type d | sort)
 
-    #########################################################################
     # Sorting
-    #########################################################################
     if $want_details; then
       case "$sort_key" in
         name) field=1; sort_flags=""  ;;
@@ -114,18 +104,10 @@ case "$cmd" in
              -k"$field","$field"
       )
 
-      #######################################################################
-      # Pretty-print with dynamic column widths
-      #######################################################################
-      header_name="Project"
-      header_num="Snapshots"
-      header_size="Size(KB)"
-      header_latest="Latest"
-
-      max_name=${#header_name}
-      max_num=${#header_num}
-      max_size=${#header_size}
-
+      # Dynamic column widths
+      header_name="Project"   ; header_num="Snapshots"
+      header_size="Size(KB)"  ; header_latest="Latest"
+      max_name=${#header_name}; max_num=${#header_num}; max_size=${#header_size}
       while IFS='|' read -r n num size _e _l; do
         (( ${#n}   > max_name )) && max_name=${#n}
         (( ${#num} > max_num  )) && max_num=${#num}
@@ -133,12 +115,7 @@ case "$cmd" in
       done <<<"$sorted"
 
       dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
-
-      if [[ "$use_sep" == true ]]; then
-        sep=' | '
-      else
-        sep='  '
-      fi
+      sep=$([[ "$use_sep" == true ]] && echo ' | ' || echo '  ')
 
       printf "%-${max_name}s${sep}%${max_num}s${sep}%${max_size}s${sep}%s\n" \
              "$header_name" "$header_num" "$header_size" "$header_latest"
@@ -160,26 +137,38 @@ case "$cmd" in
     ;;
 
   ###########################################################################
-  # ───────────────── persist separators preference ──────────────────────── #
+  # Persist separator or verbosity preferences
   ###########################################################################
   set-separators:*|--set-separators:*)
     val="${cmd#*:}"
-    case "$val" in
-      on)  bool=true  ;;
-      off) bool=false ;;
-      *)   echo "snapshot: use set-separators:on|off"; exit 2 ;;
-    esac
+    case "$val" in on|off);; *)
+      echo "snapshot: use set-separators:on|off"; exit 2 ;; esac
     need_jq "--set-separators"
-    jq --argjson b "$bool" '
+    jq --argjson b $([[ $val == on ]] && echo true || echo false) '
       (.settings             //= {}) |
       (.settings.preferences //= {}) |
       .settings.preferences.separators = $b
     ' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-    echo "snapshot: preferences.separators set to $bool."
+    echo "snapshot: preferences.separators set to $val."
+    ;;
+
+  set-verbose:*|--set-verbose:*)
+    val="${cmd#*:}"
+    case "$val" in mute|minimal|normal|verbose|debug);; *)
+      echo "snapshot: use set-verbose:mute|minimal|normal|verbose|debug" >&2
+      exit 2 ;;
+    esac
+    need_jq "--set-verbose"
+    jq --arg v "$val" '
+      (.settings             //= {}) |
+      (.settings.preferences //= {}) |
+      .settings.preferences.verbose = $v
+    ' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
+    echo "snapshot: preferences.verbose set to $val."
     ;;
 
   ###########################################################################
-  # All the other existing commands (config, ignore, …) remain unchanged
+  # Misc passthrough commands (unchanged)
   ###########################################################################
   config|-c|--config)                     show_config              ;;
   ignore|-i|--ignore)                     add_ignores "$@"         ;;
@@ -194,11 +183,14 @@ case "$cmd" in
   add-default-types|--add-default-types)  add_default_types        ;;
 
   ###########################################################################
-  # Default: generate a snapshot dump / copy / print
+  # Default: dump → (optionally) copy / print / save → summarise
   ###########################################################################
   "")
     raw_dump=$(dump_code)
 
+    #######################################################################
+    # 1. Clipboard copy (if requested)
+    #######################################################################
     if $do_copy; then
       if command -v pbcopy >/dev/null 2>&1; then
         printf '%s\n' "$raw_dump" | pbcopy
@@ -209,13 +201,90 @@ case "$cmd" in
       fi
     fi
 
+    #######################################################################
+    # 2. Print to stdout (if requested)
+    #######################################################################
     $do_print && printf '%s\n' "$raw_dump"
 
+    #######################################################################
+    # 3. Save snapshot (unless --no-snapshot)
+    #######################################################################
+    saved_paths=""
     if ! $no_snapshot; then
-      printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
+      saved_paths=$(printf '%s\n' "$raw_dump" | save_snapshot)
     fi
-    ;;
 
+    #######################################################################
+    # 4. Verbosity-aware summary (table for verbose / debug)
+    #######################################################################
+    case "$verbosity_override" in
+      mute)
+        :                                   # absolutely nothing
+        ;;
+
+      minimal|normal)
+        if [[ -n "$saved_paths" ]]; then
+          last=$(printf '%s\n' "$saved_paths" | tail -n1)
+          echo "[${last##*/}] created"
+        fi
+        ;;
+
+      verbose|debug)
+        # ── collect rows ────────────────────────────────────────────────
+        rows=()
+        while IFS= read -r snapfile; do
+          name=$(basename "$snapfile")
+          files=$(grep -c "^=====" "$snapfile")
+          lines=$(wc -l < "$snapfile" | tr -d ' ')
+          size=$(du -h "$snapfile" | awk '{print $1}')
+          rows+=( "$name|$files|$lines|$size|$snapfile" )
+        done <<<"$saved_paths"
+
+        # ── compute column widths ───────────────────────────────────────
+        header_name="Snapshot"
+        header_files="Files"
+        header_lines="Lines"
+        header_size="Size"
+        header_loc="Location"
+
+        max_name=${#header_name}
+        max_files=${#header_files}
+        max_lines=${#header_lines}
+        max_size=${#header_size}
+
+        for row in "${rows[@]}"; do
+          IFS='|' read -r n f l s _path <<<"$row"
+          (( ${#n} > max_name  )) && max_name=${#n}
+          (( ${#f} > max_files )) && max_files=${#f}
+          (( ${#l} > max_lines )) && max_lines=${#l}
+          (( ${#s} > max_size  )) && max_size=${#s}
+        done
+
+        dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
+
+        # ── separator choice (config-driven) ────────────────────────────
+        cfg_sep=$(jq -r '.settings.preferences.separators // true' \
+                     "$global_cfg" 2>/dev/null || echo true)
+        if [[ "$cfg_sep" == true ]]; then sep=' | '; else sep='  '; fi
+
+        # ── header ──────────────────────────────────────────────────────
+        printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
+               "$header_name" "$header_files" "$header_lines" "$header_size" "$header_loc"
+        printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
+               "$(dash "$max_name")" "$(dash "$max_files")" "$(dash "$max_lines")" "$(dash "$max_size")" \
+               "$(dash ${#header_loc})"
+
+        # ── rows ────────────────────────────────────────────────────────
+        for row in "${rows[@]}"; do
+          IFS='|' read -r n f l s p <<<"$row"
+          printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
+                 "$n" "$f" "$l" "$s" "$p"
+        done
+
+        # (debug no longer prints full snapshot contents)
+        ;;
+    esac
+    ;;
   ###########################################################################
   # Unknown command
   ###########################################################################
@@ -228,8 +297,9 @@ Commands:
   tree, --tree
   print, --print
   copy, --copy
-  projects, --projects          list projects (options below)
-  set-separators:on|off         persist separator preference
+  projects, --projects
+  set-separators:on|off
+  set-verbose:mute|minimal|normal|verbose|debug
   config, -c, --config
   ignore, -i, --ignore
   remove-ignore, --remove-ignore
@@ -242,18 +312,19 @@ Commands:
   remove-all-types, --remove-all-types
   add-default-types, --add-default-types
 
-projects options (order-agnostic):
+projects options:
   details / --details           add Snapshots / Size / Latest columns
   asc:KEY | desc:KEY            sort by name | size | date   (asc default)
   separators:on|off             override column separators
 
-Flags:
-  --name NAME …                 name one or more snapshots
-  --tag  TAG  …                 tag snapshot(s)
-  --to   DIR  …                 extra destination(s)
-  --no-snapshot                 skip saving snapshot file(s)
-  --print                       print the dump to stdout
-  --copy                        copy the dump to your clipboard
+Global flags (place **before** any command):
+  --verbose:mute|minimal|normal|verbose|debug
+  --name NAME …
+  --tag TAG …
+  --to DIR …
+  --no-snapshot
+  --print
+  --copy
 EOF
     exit 2
     ;;

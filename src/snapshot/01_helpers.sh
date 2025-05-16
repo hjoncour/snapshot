@@ -10,20 +10,21 @@ need_jq() {
 show_config() {
   # pretty-print everything, but inline our arrays/objects so tests can
   # string-match the prefix exactly.
-  local proj version owner desc          # scalars
-  local types ignore_files ignore_paths  # joined arrays
-  local sep_pref                         # boolean
+  local proj version owner desc           # scalars
+  local types ignore_files ignore_paths   # joined arrays
+  local sep_pref verb_pref                # preferences
 
   proj=$(jq -r  '.project // ""'                       "$global_cfg")
   version=$(jq -r '.version // ""'                     "$global_cfg")
   owner=$(jq -r  '.owner // ""'                        "$global_cfg")
-  desc=$(jq  -r  '.description | @json'                "$global_cfg")
+  desc=$(jq -r   '.description | @json'                "$global_cfg")
 
   types=$(jq -r '.settings.types_tracked   // [] | map(@json) | join(", ")'   "$global_cfg")
-  sep_pref=$(jq -r '.settings.preferences.separators // true'                 "$global_cfg")
+  sep_pref=$(jq -r '.settings.preferences.separators // true'                "$global_cfg")
+  verb_pref=$(jq -r '.settings.preferences.verbose   // "normal"'            "$global_cfg")
 
-  ignore_files=$(jq -r '.ignore_file // [] | map(@json) | join(", ")' "$global_cfg")
-  ignore_paths=$(jq -r '.ignore_path // [] | map(@json) | join(", ")' "$global_cfg")
+  ignore_files=$(jq -r '.ignore_file   // [] | map(@json) | join(", ")'        "$global_cfg")
+  ignore_paths=$(jq -r '.ignore_path   // [] | map(@json) | join(", ")'        "$global_cfg")
 
   cat <<EOF
 {
@@ -33,7 +34,7 @@ show_config() {
   "description": $desc,
   "settings": {
     "types_tracked": [${types}],
-    "preferences": {"separators": $sep_pref}
+    "preferences": {"separators": $sep_pref, "verbose": "$verb_pref"}
   },
   "ignore_file": [${ignore_files}],
   "ignore_path": [${ignore_paths}]

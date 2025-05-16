@@ -35,7 +35,7 @@ save_snapshot() {
   tmp=$(mktemp)
   cat >"$tmp"
 
-  # prepare “__tag1_tag2” suffix (or empty)
+  # build optional “__tag1_tag2” suffix
   if ((${#tags[@]})); then
     tag_str=$(IFS=_; echo "${tags[*]}")
     suffix="__${tag_str}"
@@ -44,7 +44,7 @@ save_snapshot() {
   fi
 
   ###########################################################################
-  # a) determine the *base* filename(s) (with or without --name …)
+  # a) base filename(s)
   ###########################################################################
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
@@ -61,7 +61,7 @@ save_snapshot() {
   fi
 
   ###########################################################################
-  # b) determine *destination directories*
+  # b) destination directories
   ###########################################################################
   if ((${#dest_dirs[@]})); then
     dests=("${dest_dirs[@]}")
@@ -76,7 +76,7 @@ save_snapshot() {
   fi
 
   ###########################################################################
-  # c) write out every <dest>/<basename>; report each path
+  # c) copy file(s) & optionally announce
   ###########################################################################
   results=()
   for d in "${dests[@]}"; do
@@ -84,7 +84,7 @@ save_snapshot() {
     for b in "${base_names[@]}"; do
       out="$d/$b"
       cp "$tmp" "$out"
-      echo "snapshot: saved dump to $out" >&2
+      #echo "snapshot: saved dump to $out" >&2 # Commented bc information shown elsewhere & verbose:$
       results+=( "$out" )
     done
   done
