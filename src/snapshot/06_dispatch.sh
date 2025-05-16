@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 ###############################################################################
-# 06_dispatch.sh - Dispatch
+# 06_dispatch.sh – Dispatch
 ###############################################################################
-set -euo pipefail
 
 # Grab the primary command (or empty if none)
 cmd="${1:-}"; shift || true
 
 case "$cmd" in
-  #############################################################################
-  # ───────────────────────────────── File-tree / Dumps ────────────────────── #
-  #############################################################################
+  ###########################################################################
+  # Basic helpers
+  ###########################################################################
   tree|--tree)
-    command -v tree >/dev/null 2>&1 || { echo "snapshot: install 'tree' first."; exit 1; }
+    command -v tree >/dev/null 2>&1 || {
+      echo "snapshot: install 'tree' first."; exit 1; }
     filtered_for_tree | tree --fromfile
     ;;
 
@@ -29,50 +29,42 @@ case "$cmd" in
     printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
     ;;
 
-  #############################################################################
+  ###########################################################################
   # ─────────────────────────── projects listing ──────────────────────────── #
-  #############################################################################
+  ###########################################################################
   projects|--projects)
-    ###############################################################
-    # 0. Parse positional options
-    ###############################################################
+    # Defaults
     want_details=false
-    sort_dir="asc"
-    sort_key="name"
+    sort_dir="asc"      # asc | desc
+    sort_key="name"     # name | size | date
     separators_override="__unset__"
 
+    # Parse positional options (order-agnostic)
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        details|--details)   want_details=true ;;
-        asc:*|desc:*)
-          IFS=':' read -r sort_dir sort_key <<<"$1"
-          ;;
-        separators:on)  separators_override="on"  ;;
-        separators:off) separators_override="off" ;;
+        details|--details)          want_details=true ;;
+        asc:*|desc:*)               IFS=':' read -r sort_dir sort_key <<<"$1" ;;
+        separators:on)              separators_override="on"  ;;
+        separators:off)             separators_override="off" ;;
         *) echo "snapshot: unknown --projects option '$1'." >&2; exit 2 ;;
       esac
       shift
     done
 
-    ###############################################################
-    # 1. Figure out column-separator preference
-    ###############################################################
-    cfg_sep=$(jq -r '.settings.preferences.separators // empty' \
-                "$global_cfg" 2>/dev/null || true)
-    [[ "$cfg_sep" == "true" || "$cfg_sep" == "false" ]] || cfg_sep="true"
+    #########################################################################
+    # Determine final separator preference
+    #########################################################################
+    cfg_sep=$(jq -r '.settings.preferences.separators // "true"' \
+                 "$global_cfg" 2>/dev/null || echo "true")
 
     if   [[ $separators_override == "on"  ]]; then use_sep=true
     elif [[ $separators_override == "off" ]]; then use_sep=false
-    else                                         use_sep=$cfg_sep
+    else                                           use_sep=$cfg_sep
     fi
 
-    sep=$($use_sep && echo ' | ' || echo '   ')
-
-    ###############################################################
-    # 2. Gather projects
-    ###############################################################
     base_dir="$cfg_default_dir"
-    [ -d "$base_dir" ] || { echo "snapshot: no projects found."; exit 0; }
+    [ -d "$base_dir" ] || {
+      echo "snapshot: no projects found ($base_dir empty)."; exit 0; }
 
     projects=()
 
@@ -81,31 +73,24 @@ case "$cmd" in
     #########################################################################
     while IFS= read -r d; do
       proj=$(basename "$d")
+
       if $want_details; then
+        # How many snapshot files?
         num=$(find "$d" -type f -name '*.snapshot' | wc -l | tr -d ' ')
+
+        # Folder size (KiB)
         size_kb=$(du -sk "$d" | awk '{print $1}')
 
-        # Pick newest *.snapshot (if any) and get its mtime (epoch)
-        latest_file=$(find "$d" -type f -name '*.snapshot' -printf '%T@ %p\n' \
-                      | sort -nr | head -n1 | cut -d' ' -f2-)
-
+        # Newest snapshot file (if any)
+        latest_file=$(ls -1t "$d"/*.snapshot 2>/dev/null | head -n1 || true)
         if [[ -n "$latest_file" ]]; then
-          # ── cross-platform epoch extraction ──
-          if epoch=$(stat -c '%Y' "$latest_file" 2>/dev/null); then
-            :                               # GNU coreutils
-          else
-            epoch=$(stat -f '%m' "$latest_file")   # BSD / macOS
-          fi
-
-          # ── cross-platform ISO timestamp ──
-          if latest_fmt=$(date -u -d "@$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null); then
-            :                               # GNU date
-          else
-            latest_fmt=$(date -u -r "$epoch" '+%Y-%m-%d %H:%M:%S')  # BSD date
-          fi
+          epoch=$(stat -f "%m" "$latest_file" 2>/dev/null \
+                  || stat -c "%Y" "$latest_file")
+          latest_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
+                       || date -u -r "$epoch" +'%Y-%m-%d %H:%M:%S')
         else
           epoch=0
-          latest_fmt='-'
+          latest_fmt="-"
         fi
         projects+=( "$proj|$num|$size_kb|$epoch|$latest_fmt" )
       else
@@ -113,20 +98,21 @@ case "$cmd" in
       fi
     done < <(find "$base_dir" -mindepth 1 -maxdepth 1 -type d | sort)
 
-    ###############################################################
-    # 3. Sorting
-    ###############################################################
+    #########################################################################
+    # Sorting
+    #########################################################################
     if $want_details; then
       case "$sort_key" in
-        name) field=1 sort_flags=''  ;;
-        size) field=3 sort_flags='-n';;
-        date) field=4 sort_flags='-n';;
-        *)    field=1 sort_flags=''  ;;
+        name) field=1; sort_flags=""  ;;
+        size) field=3; sort_flags="-n";;
+        date) field=4; sort_flags="-n";;
+        *)    field=1; sort_flags=""  ;;
       esac
-
-      sorted=$(printf '%s\n' "${projects[@]}" |
-               sort -t'|' $sort_flags $( [[ $sort_dir == desc ]] && echo -r ) \
-               -k"$field","$field")
+      sorted=$(
+        printf '%s\n' "${projects[@]}" |
+        sort -t'|' $sort_flags $( [[ $sort_dir == desc ]] && echo "-r" ) \
+             -k"$field","$field"
+      )
 
       #######################################################################
       # Pretty-print with dynamic column widths
@@ -165,13 +151,17 @@ case "$cmd" in
                "$name" "$num" "$size" "$latest"
       done <<<"$sorted"
     else
-      printf '%s\n' "${projects[@]}" | ( [ "$sort_dir" = desc ] && sort -r || sort )
+      if [[ $sort_dir == desc ]]; then
+        printf '%s\n' "${projects[@]}" | sort -r
+      else
+        printf '%s\n' "${projects[@]}" | sort
+      fi
     fi
     ;;
 
-  #############################################################################
-  # ─────────────────────── Persist separators preference ─────────────────── #
-  #############################################################################
+  ###########################################################################
+  # ───────────────── persist separators preference ──────────────────────── #
+  ###########################################################################
   set-separators:*|--set-separators:*)
     val="${cmd#*:}"
     case "$val" in
@@ -181,33 +171,31 @@ case "$cmd" in
     esac
     need_jq "--set-separators"
     jq --argjson b "$bool" '
-      (.settings              //= {}) |
-      (.settings.preferences  //= {}) |
+      (.settings             //= {}) |
+      (.settings.preferences //= {}) |
       .settings.preferences.separators = $b
     ' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
     echo "snapshot: preferences.separators set to $bool."
     ;;
 
-  #############################################################################
-  # ───────────────────────────── Other helpers ───────────────────────────── #
-  #############################################################################
-  config|-c|--config)                         show_config                     ;;
-  ignore|-i|--ignore)                         add_ignores "$@"               ;;
-  remove-ignore|--remove-ignore)              remove_ignores "$@"            ;;
-  remove-all-ignored|--remove-all-ignored)    remove_all_ignored             ;;
-  remove-all-ignored-paths|--remove-all-ignored-paths)
-                                              remove_all_ignored_paths       ;;
-  remove-all-ignored-files|--remove-all-ignored-files)
-                                              remove_all_ignored_files       ;;
-  use-gitignore|--use-gitignore)              use_gitignore                  ;;
-  add-type|--add-type)                        add_types "$@"                 ;;
-  remove-type|--remove-type)                  remove_types "$@"              ;;
-  remove-all-types|--remove-all-types)        remove_all_types               ;;
-  add-default-types|--add-default-types)      add_default_types              ;;
+  ###########################################################################
+  # All the other existing commands (config, ignore, …) remain unchanged
+  ###########################################################################
+  config|-c|--config)                     show_config              ;;
+  ignore|-i|--ignore)                     add_ignores "$@"         ;;
+  remove-ignore|--remove-ignore)          remove_ignores "$@"      ;;
+  remove-all-ignored|--remove-all-ignored)            remove_all_ignored      ;;
+  remove-all-ignored-paths|--remove-all-ignored-paths) remove_all_ignored_paths;;
+  remove-all-ignored-files|--remove-all-ignored-files) remove_all_ignored_files;;
+  use-gitignore|--use-gitignore)          use_gitignore            ;;
+  add-type|--add-type)                    add_types "$@"           ;;
+  remove-type|--remove-type)              remove_types "$@"        ;;
+  remove-all-types|--remove-all-types)    remove_all_types         ;;
+  add-default-types|--add-default-types)  add_default_types        ;;
 
-  #############################################################################
-  # ─────────────────────────── default dump flow ─────────────────────────── #
-  #############################################################################
+  ###########################################################################
+  # Default: generate a snapshot dump / copy / print
+  ###########################################################################
   "")
     raw_dump=$(dump_code)
 
@@ -222,12 +210,15 @@ case "$cmd" in
     fi
 
     $do_print && printf '%s\n' "$raw_dump"
-    ! $no_snapshot && printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
+
+    if ! $no_snapshot; then
+      printf '%s\n' "$raw_dump" | save_snapshot >/dev/null
+    fi
     ;;
 
-  #############################################################################
-  # ───────────────────────────── Unknown command ─────────────────────────── #
-  #############################################################################
+  ###########################################################################
+  # Unknown command
+  ###########################################################################
   *)
     echo "snapshot: unknown command '$cmd'." >&2
     cat <<EOF >&2
