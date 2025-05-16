@@ -1,9 +1,12 @@
 {
   "project": "snapshot",
-  "version": "0.0.0.11",
+  "version": "0.0.0.12",
   "owner": "Hugo Joncour",
   "description": "Example configuration file for snapshot utility",
   "settings": {
+    "preferences": {
+      "separators": true
+    },
     "types_tracked": [
       "sh",
       "bash",
