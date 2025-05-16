@@ -4,6 +4,9 @@
   "owner": "Hugo Joncour",
   "description": "Example configuration file for snapshot utility",
   "settings": {
+    "preferences": {
+      "separators": true
+    },
     "types_tracked": [
       "sh",
       "bash",
