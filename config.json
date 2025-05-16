@@ -5,7 +5,8 @@
   "description": "Example configuration file for snapshot utility",
   "settings": {
     "preferences": {
-      "separators": true
+      "separators": true,
+      "verbose": "normal"
     },
     "types_tracked": [
       "sh",

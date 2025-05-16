@@ -19,10 +19,9 @@ chmod +x src/snapshot.sh
 git add . >/dev/null
 
 ###############################################################################
-# Expected JSON prefix (everything up to the arrays, so we can              #
-# string-match while ignoring dynamic whitespace that jq may emit later).   #
+# Expected JSON prefix (everything up to the arrays/objects)                  #
 ###############################################################################
-expected=$'{\n  "project": "",\n  "version": "",\n  "owner": "",\n  "description": null,\n  "settings": {\n    "types_tracked": [],\n    "preferences": {"separators": true}\n  },\n  "ignore_file": [],\n  "ignore_path": []\n}'
+expected=$'{\n  "project": \"\",\n  "version\": \"\",\n  "owner\": \"\",\n  "description\": null,\n  "settings\": {\n    \"types_tracked\": [],\n    \"preferences\": {\"separators\": true, \"verbose\": \"normal\"}\n  },\n  \"ignore_file\": [],\n  \"ignore_path\": []\n}'
 
 ###############################################################################
 # 1. ── PREFIX: --config / -c ──
