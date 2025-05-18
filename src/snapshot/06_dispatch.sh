@@ -169,7 +169,7 @@ case "$cmd" in
     project_arg=""
 
     #######################################################################
-    # Optional first positional token → project name (if not a flag)
+    # Optional first positional token → explicit project name
     #######################################################################
     if [[ $# -gt 0 && ! "$1" =~ ^(details|--details|asc:|desc:|separators:on|separators:off)$ ]]; then
       project_arg="$1"; shift
@@ -187,12 +187,19 @@ case "$cmd" in
       shift
     done
 
-    # Determine project name (arg → local cfg → global cfg → repo name)
+    #######################################################################
+    # Detect project name when none supplied
+    #   1) local config.json (project key)
+    #   2) repository directory name         ← **new – before global cfg**
+    #   3) global config (rare fallback)
+    #######################################################################
     if [[ -z "$project_arg" ]]; then
       local_cfg="$git_root/config.json"
-      if   [[ -f "$local_cfg" ]]; then project_arg=$(jq -r '.project // empty' "$local_cfg"); fi
-      [[ -z "$project_arg" ]] && project_arg=$(jq -r '.project // empty' "$global_cfg")
+      if [[ -f "$local_cfg" ]]; then
+        project_arg=$(jq -r '.project // empty' "$local_cfg")
+      fi
       [[ -z "$project_arg" ]] && project_arg=$(basename "$git_root")
+      [[ -z "$project_arg" ]] && project_arg=$(jq -r '.project // empty' "$global_cfg")
     fi
 
     snap_dir="$cfg_default_dir/$project_arg"
@@ -201,8 +208,7 @@ case "$cmd" in
     #######################################################################
     # Separator preference
     #######################################################################
-    cfg_sep=$(jq -r '.settings.preferences.separators // "true"' \
-                 "$global_cfg" 2>/dev/null || echo "true")
+    cfg_sep=$(jq -r '.settings.preferences.separators // "true"' "$global_cfg" 2>/dev/null || echo "true")
     if   [[ $separators_override == "on"  ]]; then use_sep=true
     elif [[ $separators_override == "off" ]]; then use_sep=false
     else                                           use_sep=$cfg_sep
@@ -217,7 +223,6 @@ case "$cmd" in
       bn=$(basename "$f")                 # full filename
       base="${bn%.snapshot}"              # strip extension
 
-      # fields for details
       size_kb=$(du -sk "$f" | awk '{print $1}')
       files=$(grep -c '^=====' "$f" || echo 0)
 
@@ -225,14 +230,10 @@ case "$cmd" in
       date_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
                  || date -u -r "$epoch" +'%Y-%m-%d %H:%M:%S')
 
-      # derive branch + tags from filename, if present
+      # derive branch & tags from filename
       IFS='_' read -r _ts branch rem <<<"$base"
       tags_part="${rem#*__}"
-      if [[ "$tags_part" != "$rem" ]]; then
-        tags="$tags_part"
-      else
-        tags="-"
-      fi
+      [[ "$tags_part" != "$rem" ]] && tags="$tags_part" || tags="-"
 
       if $want_details; then
         snapshots+=( "$bn|$date_fmt|$tags|$size_kb|$files|$branch" )
@@ -301,7 +302,7 @@ case "$cmd" in
     ;;
 
   ###########################################################################
-  # ───────────────── persist separators preference ──────────────────────── #
+  # ─────────────────────── preference helpers ──────────────────────────── #
   ###########################################################################
   set-separators:*|--set-separators:*)
     val="${cmd#*:}"
@@ -341,7 +342,7 @@ case "$cmd" in
     ;;
 
   ###########################################################################
-  # All the other existing commands (config, ignore, …)
+  # Other commands (config, ignore, …)
   ###########################################################################
   config|-c|--config)                     show_config              ;;
   ignore|-i|--ignore)                     add_ignores "$@"         ;;
@@ -360,28 +361,41 @@ case "$cmd" in
   ###########################################################################
   "")
     raw_dump=$(dump_code)
+    # 1) save snapshot(s)
     saved_paths=$(printf '%s\n' "$raw_dump" | save_snapshot)
 
+    # 2) optional clipboard copy
+    if $do_copy; then
+      if command -v pbcopy >/dev/null 2>&1; then
+        printf '%s\n' "$raw_dump" | pbcopy
+        bytes=$(printf '%s\n' "$raw_dump" | wc -c)
+        echo "snapshot: copied $bytes bytes to clipboard."
+      else
+        echo "snapshot: install 'pbcopy' first."
+      fi
+    fi
+
+    # 3) verbosity-controlled summary
     case "$verbosity_override" in
-      mute) ;;
+      mute) ;;   # no output
       minimal|normal)
         last=$(printf '%s\n' "$saved_paths" | tail -n1)
         echo "[${last##*/}] created"
         ;;
       verbose|debug)
         sep_pref=$(jq -r '.settings.preferences.separators // "true"' "$global_cfg")
-        if [[ "$sep_pref" == "true" ]]; then sep=' | '; else sep='  '; fi
+        [[ "$sep_pref" == "true" ]] && sep=' | ' || sep='  '
 
-        hdr1="Snapshot"; hdr2="Files"; hdr3="Lines"; hdr4="Size"; hdr5="Location"
-        max_name=${#hdr1}; max_files=${#hdr2}; max_lines=${#hdr3}; max_size=${#hdr4}
+        hdr1="Snapshot" hdr2="Files" hdr3="Lines" hdr4="Size" hdr5="Location"
+        max_name=${#hdr1} max_files=${#hdr2} max_lines=${#hdr3} max_size=${#hdr4}
 
-        tmp_rows=""
-        while IFS= read -r snapfile; do
-          name=$(basename "$snapfile")
-          files=$(grep -c '^=====' "$snapfile" || echo 0)
-          lines=$(wc -l < "$snapfile" | tr -d ' ')
-          size=$(du -h "$snapfile" | awk '{print $1}')
-          tmp_rows+="$name|$files|$lines|$size|$snapfile"$'\n'
+        rows=""
+        while IFS= read -r sfile; do
+          name=$(basename "$sfile")
+          files=$(grep -c '^=====' "$sfile" || echo 0)
+          lines=$(wc -l < "$sfile" | tr -d ' ')
+          size=$(du -h "$sfile" | awk '{print $1}')
+          rows+="$name|$files|$lines|$size|$sfile"$'\n'
 
           (( ${#name}  > max_name  )) && max_name=${#name}
           (( ${#files} > max_files )) && max_files=${#files}
@@ -389,21 +403,23 @@ case "$cmd" in
           (( ${#size}  > max_size  )) && max_size=${#size}
         done <<<"$saved_paths"
 
+        dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
+
         printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
                "$hdr1" "$hdr2" "$hdr3" "$hdr4" "$hdr5"
-        dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
         printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
                "$(dash "$max_name")" "$(dash "$max_files")" "$(dash "$max_lines")" \
                "$(dash "$max_size")" "$(dash ${#hdr5})"
 
-        printf '%s' "$tmp_rows" | while IFS='|' read -r n f l s p; do
+        printf '%s' "$rows" | while IFS='|' read -r n f l sz p; do
           printf "%-${max_name}s${sep}%${max_files}s${sep}%${max_lines}s${sep}%${max_size}s${sep}%s\n" \
-                 "$n" "$f" "$l" "$s" "$p"
+                 "$n" "$f" "$l" "$sz" "$p"
         done
-
-        [[ "$verbosity_override" == debug ]] && printf '\n%s\n' "$raw_dump"
         ;;
     esac
+
+    # 4) optional full dump output
+    $do_print && printf '\n%s\n' "$raw_dump"
     ;;
 
   ###########################################################################
