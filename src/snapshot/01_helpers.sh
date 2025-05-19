@@ -1,6 +1,17 @@
+#!/usr/bin/env bash
 ###############################################################################
 # 1. Helpers
 ###############################################################################
+
+# ---------------------------------------------------------------------------
+# Internal: echo only when verbosity is at least "verbose"
+# ---------------------------------------------------------------------------
+_verbose() {
+  case "${verbosity_override:-normal}" in
+    verbose|debug) printf '%s\n' "$*" ;;
+  esac
+}
+
 need_jq() {
   command -v jq >/dev/null 2>&1 && return
   echo "snapshot: error - '$1' requires jq (not found in PATH)." >&2
@@ -17,7 +28,7 @@ show_config() {
   proj=$(jq -r  '.project // ""'                       "$global_cfg")
   version=$(jq -r '.version // ""'                     "$global_cfg")
   owner=$(jq -r  '.owner // ""'                        "$global_cfg")
-  desc=$(jq -r   '.description | @json'                "$global_cfg")
+  desc=$(jq -r   '.description | @json'                 "$global_cfg")
 
   types=$(jq -r '.settings.types_tracked   // [] | map(@json) | join(", ")'   "$global_cfg")
   sep_pref=$(jq -r '.settings.preferences.separators // true'                "$global_cfg")
@@ -77,12 +88,12 @@ add_ignores() {
       jq --arg p "$item" \
          '.ignore_path = ((.ignore_path // []) + [$p] | unique)' \
          "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-      echo "snapshot: added '$item' to ignore_path."
+      _verbose "snapshot: added '$item' to ignore_path."
     else
       jq --arg f "$item" \
          '.ignore_file = ((.ignore_file // []) + [$f] | unique)' \
          "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-      echo "snapshot: added '$item' to ignore_file."
+      _verbose "snapshot: added '$item' to ignore_file."
     fi
   done
 }
@@ -95,7 +106,7 @@ remove_ignores() {
       .ignore_file = ((.ignore_file // []) | map(select(. != $x))) |
       .ignore_path = ((.ignore_path // []) | map(select(. != $x)))
     ' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-    echo "snapshot: removed '$item' from ignore_file and ignore_path."
+    _verbose "snapshot: removed '$item' from ignore_file and ignore_path."
   done
 }
 
@@ -106,7 +117,7 @@ add_types() {
     jq --arg ext "$t" \
        '.settings.types_tracked = ((.settings.types_tracked // []) + [$ext] | unique)' \
        "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-    echo "snapshot: added '$t' to settings.types_tracked."
+    _verbose "snapshot: added '$t' to settings.types_tracked."
   done
 }
 
@@ -117,7 +128,7 @@ remove_types() {
     jq --arg ext "$t" \
        '.settings.types_tracked = ((.settings.types_tracked // []) | map(select(. != $ext)))' \
        "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-    echo "snapshot: removed '$t' from settings.types_tracked."
+    _verbose "snapshot: removed '$t' from settings.types_tracked."
   done
 }
 
@@ -144,23 +155,23 @@ use_gitignore() {
 remove_all_ignored() {
   jq '.ignore_file = [] | .ignore_path = []' \
      "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-  echo "snapshot: cleared ignore_file and ignore_path."
+  _verbose "snapshot: cleared ignore_file and ignore_path."
 }
 
 remove_all_ignored_paths() {
   jq '.ignore_path = []' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-  echo "snapshot: cleared ignore_path."
+  _verbose "snapshot: cleared ignore_path."
 }
 
 remove_all_ignored_files() {
   jq '.ignore_file = []' "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-  echo "snapshot: cleared ignore_file."
+  _verbose "snapshot: cleared ignore_file."
 }
 
 remove_all_types() {
   jq '.settings.types_tracked = []' \
      "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
-  echo "snapshot: cleared settings.types_tracked."
+  _verbose "snapshot: cleared settings.types_tracked."
 }
 
 add_default_types() {
@@ -176,5 +187,5 @@ add_default_types() {
        "$global_cfg" > cfg.tmp && mv cfg.tmp "$global_cfg"
   done
 
-  echo "snapshot: added all built-in extensions to settings.types_tracked."
+  _verbose "snapshot: added all built-in extensions to settings.types_tracked."
 }
