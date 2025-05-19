@@ -30,7 +30,7 @@ failed_list=$(mktemp)
 
 tests_list=$(find test -type f -name 'test_*.sh' | sort)
 while IFS= read -r test; do
-  echo "→ $test"
+  # echo "\n→ $test"
   if bash "$test"; then
     printf '%s\n' "$test" >> "$passed_list"
   else
