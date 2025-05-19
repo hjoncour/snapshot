@@ -35,16 +35,18 @@ save_snapshot() {
   tmp=$(mktemp)
   cat >"$tmp"
 
-  # build optional “__tag1_tag2” suffix
+  ###########################################################################
+  # prepare “__[tag1,tag2]” suffix (or empty)
+  ###########################################################################
   if ((${#tags[@]})); then
-    tag_str=$(IFS=_; echo "${tags[*]}")
-    suffix="__${tag_str}"
+    tag_str=$(IFS=,; echo "${tags[*]}")
+    suffix="__[${tag_str}]"
   else
     suffix=""
   fi
 
   ###########################################################################
-  # a) base filename(s)
+  # a) determine the *base* filename(s) (with or without --name …)
   ###########################################################################
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
@@ -61,7 +63,7 @@ save_snapshot() {
   fi
 
   ###########################################################################
-  # b) destination directories
+  # b) determine *destination directories*
   ###########################################################################
   if ((${#dest_dirs[@]})); then
     dests=("${dest_dirs[@]}")
@@ -69,14 +71,17 @@ save_snapshot() {
     # default support dir: ~/Library/Application Support/snapshot/<project>
     local_cfg="$git_root/config.json"
     proj=""
-    if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
-    [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+    if [ -f "$local_cfg" ]; then
+      proj=$(jq -r '.project // empty' "$local_cfg")
+    fi
+    # fallback order: repo folder name → global cfg
     [ -z "$proj" ] && proj=$(basename "$git_root")
+    [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
     dests=( "$cfg_default_dir/$proj" )
   fi
 
   ###########################################################################
-  # c) copy file(s) & optionally announce
+  # c) write out every <dest>/<basename>; report each path
   ###########################################################################
   results=()
   for d in "${dests[@]}"; do
@@ -84,7 +89,7 @@ save_snapshot() {
     for b in "${base_names[@]}"; do
       out="$d/$b"
       cp "$tmp" "$out"
-      #echo "snapshot: saved dump to $out" >&2 # Commented bc information shown elsewhere & verbose:$
+      echo "snapshot: saved dump to $out" >&2
       results+=( "$out" )
     done
   done
