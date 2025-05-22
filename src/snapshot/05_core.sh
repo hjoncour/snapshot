@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 #
-# snapshot/05_core.sh - Core dumping routines + snapshot-to-file
+# snapshot/05_core.sh – Core dumping routines:
+#   • dump_code / filtered_for_tree
+#   • save_snapshot
+#   • restore_snapshot
 #
 set -euo pipefail
 
-# dump_code: outputs code for tracked files matching extensions
+###############################################################################
+# 1. Dump helpers                                                             #
+###############################################################################
+
+# dump_code: output code for every tracked file whose extension matches the
+#            configured (or default) list, skipping any ignored paths/files.
 dump_code() {
   printf '%s\n' "$tracked_files" |
     grep -E -i "$exts" |
@@ -15,7 +23,8 @@ dump_code() {
     done
 }
 
-# filtered_for_tree: lists files for tree view (excluding ignored)
+# filtered_for_tree: like dump_code’s first pass, but emits only file paths;
+#                    useful for the --tree command.
 filtered_for_tree() {
   printf '%s\n' "$tracked_files" |
     while IFS= read -r f; do
@@ -23,10 +32,13 @@ filtered_for_tree() {
     done
 }
 
-# save_snapshot: writes dump either to the usual support dir (default)
-#                or to the user-supplied --to paths.
-#   Supports multiple --name values, multiple --tag values,
-#   and multiple --to destinations.
+###############################################################################
+# 2. Save a snapshot dump to disk                                             #
+###############################################################################
+# save_snapshot reads a complete dump from STDIN and writes it to one or
+# several .snapshot files, depending on --name, --tag and --to arguments.
+# It echoes the resulting file paths (newline-separated) so callers can react
+# (e.g. print a success table or copy/print the dump).
 save_snapshot() {
   # honour --no-snapshot
   [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
@@ -84,7 +96,6 @@ save_snapshot() {
     for b in "${base_names[@]}"; do
       out="$d/$b"
       cp "$tmp" "$out"
-      #echo "snapshot: saved dump to $out" >&2 # Commented bc information shown elsewhere & verbose:$
       results+=( "$out" )
     done
   done
@@ -93,4 +104,54 @@ save_snapshot() {
 
   # emit list (newline-separated) for callers (print|copy dispatchers)
   printf '%s\n' "${results[@]}"
+}
+
+###############################################################################
+# 3. Restore the latest snapshot                                              #
+###############################################################################
+# restore_snapshot: locate the newest .snapshot file for this project and
+#                   recreate every file in the working tree exactly as saved.
+#
+# ‣ The project name is taken in priority from repo-local config.json,
+#   then global config, then the current directory’s basename.
+# ‣ All folders are auto-created. Existing files are overwritten.
+# ‣ Outputs a short progress message.
+restore_snapshot() {
+  ###########################################################################
+  # 0. Locate the snapshot directory and newest file for this project
+  ###########################################################################
+  local_cfg="$git_root/config.json"
+  proj=""
+  if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+  [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+  [ -z "$proj" ] && proj=$(basename "$git_root")
+
+  snap_dir="$cfg_default_dir/$proj"
+  [ -d "$snap_dir" ] || {
+    echo "snapshot: no snapshots found for project '$proj'." >&2; exit 1; }
+
+  latest=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | head -n1)
+  [ -n "$latest" ] || {
+    echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
+
+  echo "snapshot: restoring from $(basename "$latest")"
+
+  ###########################################################################
+  # 1. Parse the dump and recreate every file
+  ###########################################################################
+  current_file=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    # ── New header?  → start (or switch) target file ──────────────────────
+    if [[ "$line" =~ ^=====[[:space:]](.+)[[:space:]]===== ]]; then
+      current_file="${BASH_REMATCH[1]}"
+      mkdir -p "$(dirname "$git_root/$current_file")"
+      : > "$git_root/$current_file"      # create / truncate
+      continue
+    fi
+
+    # ── Normal content line ── append only if a header has been seen ──────
+    [[ -n "$current_file" ]] && printf '%s\n' "$line" >> "$git_root/$current_file"
+  done < "$latest"
+
+  echo "snapshot: restore complete."
 }
