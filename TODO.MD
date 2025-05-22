@@ -15,11 +15,7 @@
 Settings:
 - 
 
-
-
 --
-
---verbose config
 
 
 - project specific config
@@ -35,3 +31,4 @@ Settings:
 
 update installed config.json version
 
+Revert snapshot <---
