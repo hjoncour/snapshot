@@ -8,30 +8,22 @@
 
 - snapshot --history
 
-
-
 --- TESTS MISSING:
 
 Settings:
 - 
 
-
-
 --
 
---verbose config
-
-
 - project specific config
-
 
 - Make a linux version of this      (install script)
 - Make a windows version of this    (install script)
 - Better testing
 - eventually rewrite this in rust lol
 
-
 - add command to update automatically
 
 update installed config.json version
 
+Revert snapshot <---

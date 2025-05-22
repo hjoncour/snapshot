@@ -168,6 +168,13 @@ case "$cmd" in
     ;;
 
   ###########################################################################
+  # Restore latest snapshot                                                 #
+  ###########################################################################
+  restore|--restore)
+    restore_snapshot
+    ;;
+
+  ###########################################################################
   # Misc passthrough commands (unchanged)
   ###########################################################################
   config|-c|--config)                     show_config              ;;
@@ -311,7 +318,7 @@ Commands:
   remove-type, --remove-type
   remove-all-types, --remove-all-types
   add-default-types, --add-default-types
-
+  restore, --restore
 projects options:
   details / --details           add Snapshots / Size / Latest columns
   asc:KEY | desc:KEY            sort by name | size | date   (asc default)
