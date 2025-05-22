@@ -12,9 +12,7 @@
 
 Settings:
 - 
-
---
-
+/revert-snapshot)
 - project specific config
 
 - Make a linux version of this      (install script)
@@ -26,4 +24,4 @@ Settings:
 
 update installed config.json version
 
-Revert snapshot <---
+<<<<<<< 
