@@ -3,7 +3,7 @@
 # snapshot/05_core.sh – Core dumping routines:
 #   • dump_code / filtered_for_tree
 #   • save_snapshot
-#   • restore_snapshot
+#   • restore_snapshot  (now accepts an optional snapshot filename)
 #
 set -euo pipefail
 
@@ -11,8 +11,6 @@ set -euo pipefail
 # 1. Dump helpers                                                             #
 ###############################################################################
 
-# dump_code: output code for every tracked file whose extension matches the
-#            configured (or default) list, skipping any ignored paths/files.
 dump_code() {
   printf '%s\n' "$tracked_files" |
     grep -E -i "$exts" |
@@ -23,8 +21,6 @@ dump_code() {
     done
 }
 
-# filtered_for_tree: like dump_code’s first pass, but emits only file paths;
-#                    useful for the --tree command.
 filtered_for_tree() {
   printf '%s\n' "$tracked_files" |
     while IFS= read -r f; do
@@ -35,19 +31,12 @@ filtered_for_tree() {
 ###############################################################################
 # 2. Save a snapshot dump to disk                                             #
 ###############################################################################
-# save_snapshot reads a complete dump from STDIN and writes it to one or
-# several .snapshot files, depending on --name, --tag and --to arguments.
-# It echoes the resulting file paths (newline-separated) so callers can react
-# (e.g. print a success table or copy/print the dump).
 save_snapshot() {
-  # honour --no-snapshot
   [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
 
-  # read whole dump into a temp file
   tmp=$(mktemp)
   cat >"$tmp"
 
-  # build optional “__tag1_tag2” suffix
   if ((${#tags[@]})); then
     tag_str=$(IFS=_; echo "${tags[*]}")
     suffix="__${tag_str}"
@@ -55,9 +44,6 @@ save_snapshot() {
     suffix=""
   fi
 
-  ###########################################################################
-  # a) base filename(s)
-  ###########################################################################
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
   branch=${branch//\//_}
@@ -72,13 +58,9 @@ save_snapshot() {
     base_names+=( "${epoch}_${branch}_${commit}${suffix}.snapshot" )
   fi
 
-  ###########################################################################
-  # b) destination directories
-  ###########################################################################
   if ((${#dest_dirs[@]})); then
     dests=("${dest_dirs[@]}")
   else
-    # default support dir: ~/Library/Application Support/snapshot/<project>
     local_cfg="$git_root/config.json"
     proj=""
     if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -87,9 +69,6 @@ save_snapshot() {
     dests=( "$cfg_default_dir/$proj" )
   fi
 
-  ###########################################################################
-  # c) copy file(s) & optionally announce
-  ###########################################################################
   results=()
   for d in "${dests[@]}"; do
     mkdir -p "$d"
@@ -99,27 +78,24 @@ save_snapshot() {
       results+=( "$out" )
     done
   done
-
   rm -f "$tmp"
-
-  # emit list (newline-separated) for callers (print|copy dispatchers)
   printf '%s\n' "${results[@]}"
 }
 
 ###############################################################################
-# 3. Restore the latest snapshot                                              #
+# 3. Restore snapshot (latest or specific file)                               #
 ###############################################################################
-# restore_snapshot: locate the newest .snapshot file for this project and
-#                   recreate every file in the working tree exactly as saved.
+# Usage:
+#   snapshot restore                 → restore newest snapshot for project
+#   snapshot restore FILE            → restore FILE (with or w/out .snapshot)
 #
-# ‣ The project name is taken in priority from repo-local config.json,
-#   then global config, then the current directory’s basename.
-# ‣ All folders are auto-created. Existing files are overwritten.
-# ‣ Outputs a short progress message.
+#   FILE must exist inside the project’s snapshot directory; if the extension
+#   “.snapshot” is omitted it is added automatically.
+#
 restore_snapshot() {
-  ###########################################################################
-  # 0. Locate the snapshot directory and newest file for this project
-  ###########################################################################
+  requested="${1:-}"     # empty = use newest
+
+  # ── determine project name and snapshot directory ───────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -127,31 +103,52 @@ restore_snapshot() {
   [ -z "$proj" ] && proj=$(basename "$git_root")
 
   snap_dir="$cfg_default_dir/$proj"
-  [ -d "$snap_dir" ] || {
-    echo "snapshot: no snapshots found for project '$proj'." >&2; exit 1; }
+  [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
 
-  latest=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | head -n1)
-  [ -n "$latest" ] || {
-    echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
+  # ── choose snapshot file ────────────────────────────────────────────────
+  if [[ -z "$requested" ]]; then
+    target=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | head -n1)
+    [ -n "$target" ] || { echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
+  else
+    # if user didn’t type the .snapshot suffix, add it
+    [[ "$requested" == *.snapshot ]] || requested="${requested}.snapshot"
 
-  echo "snapshot: restoring from $(basename "$latest")"
+    # absolute / relative path supplied?
+    if [[ "$requested" == */* && -f "$requested" ]]; then
+      target="$requested"
+    else
+      target="$snap_dir/$requested"
+    fi
 
-  ###########################################################################
-  # 1. Parse the dump and recreate every file
-  ###########################################################################
+    [ -f "$target" ] || { echo "snapshot: '$requested' not found in $snap_dir." >&2; exit 1; }
+  fi
+
+  echo "snapshot: restoring from $(basename "$target")"
+
+  # ── replay dump into working tree ───────────────────────────────────────
   current_file=""
+  pending_blank=false
+
   while IFS= read -r line || [ -n "$line" ]; do
-    # ── New header?  → start (or switch) target file ──────────────────────
     if [[ "$line" =~ ^=====[[:space:]](.+)[[:space:]]===== ]]; then
       current_file="${BASH_REMATCH[1]}"
       mkdir -p "$(dirname "$git_root/$current_file")"
-      : > "$git_root/$current_file"      # create / truncate
+      : > "$git_root/$current_file"
+      pending_blank=false
       continue
     fi
 
-    # ── Normal content line ── append only if a header has been seen ──────
+    if [[ -z "$line" ]]; then
+      pending_blank=true
+      continue
+    fi
+    if $pending_blank; then
+      printf '\n' >> "$git_root/$current_file"
+      pending_blank=false
+    fi
+
     [[ -n "$current_file" ]] && printf '%s\n' "$line" >> "$git_root/$current_file"
-  done < "$latest"
+  done < "$target"
 
   echo "snapshot: restore complete."
 }
