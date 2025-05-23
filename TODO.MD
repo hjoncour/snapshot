@@ -24,4 +24,3 @@ Settings:
 
 update installed config.json version
 
-<<<<<<< 
