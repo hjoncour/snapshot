@@ -3,7 +3,7 @@
 # snapshot/05_core.sh – Core dumping routines:
 #   • dump_code / filtered_for_tree
 #   • save_snapshot
-#   • restore_snapshot  (now accepts an optional snapshot filename)
+#   • restore_snapshot   (latest, N-th latest, or explicit filename)
 #
 set -euo pipefail
 
@@ -83,19 +83,18 @@ save_snapshot() {
 }
 
 ###############################################################################
-# 3. Restore snapshot (latest or specific file)                               #
+# 3. Restore snapshot (newest, N-th newest, or explicit file)                 #
 ###############################################################################
-# Usage:
-#   snapshot restore                 → restore newest snapshot for project
-#   snapshot restore FILE            → restore FILE (with or w/out .snapshot)
-#
-#   FILE must exist inside the project’s snapshot directory; if the extension
-#   “.snapshot” is omitted it is added automatically.
+# Usage examples:
+#   snapshot restore            → newest snapshot
+#   snapshot restore 1          → newest snapshot (same as above)
+#   snapshot restore 3          → 3rd newest snapshot
+#   snapshot restore NAME       → restore NAME[.snapshot]
 #
 restore_snapshot() {
-  requested="${1:-}"     # empty = use newest
+  requested="${1:-}"   # empty → newest | number → N-th newest | filename
 
-  # ── determine project name and snapshot directory ───────────────────────
+  # ── determine project + snapshot directory ──────────────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -105,22 +104,29 @@ restore_snapshot() {
   snap_dir="$cfg_default_dir/$proj"
   [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
 
-  # ── choose snapshot file ────────────────────────────────────────────────
-  if [[ -z "$requested" ]]; then
+  # ── select snapshot to restore ──────────────────────────────────────────
+  if [[ -z "$requested" || "$requested" == "1" ]]; then        # newest
     target=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | head -n1)
-    [ -n "$target" ] || { echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
-  else
-    # if user didn’t type the .snapshot suffix, add it
+  elif [[ "$requested" =~ ^[0-9]+$ ]]; then                    # N-th newest
+    idx="$requested"
+    target=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | sed -n "${idx}p")
+  else                                                         # explicit name
     [[ "$requested" == *.snapshot ]] || requested="${requested}.snapshot"
-
-    # absolute / relative path supplied?
     if [[ "$requested" == */* && -f "$requested" ]]; then
-      target="$requested"
+      target="$requested"            # absolute / relative path
     else
       target="$snap_dir/$requested"
     fi
+  fi
 
-    [ -f "$target" ] || { echo "snapshot: '$requested' not found in $snap_dir." >&2; exit 1; }
+  # ── sanity checks ───────────────────────────────────────────────────────
+  if [[ -z "${target:-}" || ! -f "$target" ]]; then
+    if [[ "$requested" =~ ^[0-9]+$ ]]; then
+      echo "snapshot: no ${requested}-th newest snapshot in $snap_dir." >&2
+    else
+      echo "snapshot: '${requested:-}' not found in $snap_dir." >&2
+    fi
+    exit 1
   fi
 
   echo "snapshot: restoring from $(basename "$target")"
