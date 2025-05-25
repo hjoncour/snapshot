@@ -3,7 +3,8 @@
 # snapshot/05_core.sh – Core dumping routines:
 #   • dump_code / filtered_for_tree
 #   • save_snapshot
-#   • restore_snapshot   (latest, N-th latest, or explicit filename)
+#   • restore_snapshot
+#   • archive_snapshots   ← NEW
 #
 set -euo pipefail
 
@@ -83,18 +84,17 @@ save_snapshot() {
 }
 
 ###############################################################################
-# 3. Restore snapshot (newest, N-th newest, or explicit file)                 #
+# 3. Restore snapshot (latest, nth-latest, or specific file)                  #
 ###############################################################################
-# Usage examples:
-#   snapshot restore            → newest snapshot
-#   snapshot restore 1          → newest snapshot (same as above)
-#   snapshot restore 3          → 3rd newest snapshot
-#   snapshot restore NAME       → restore NAME[.snapshot]
+# Usage:
+#   snapshot restore                   → newest snapshot for project
+#   snapshot restore N                 → N-th newest (1 = newest)
+#   snapshot restore FILE              → restore FILE (adds .snapshot if missing)
 #
 restore_snapshot() {
-  requested="${1:-}"   # empty → newest | number → N-th newest | filename
+  requested="${1:-}"     # empty / number / filename
 
-  # ── determine project + snapshot directory ──────────────────────────────
+  # ── determine project name & snapshot dir ───────────────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -104,29 +104,27 @@ restore_snapshot() {
   snap_dir="$cfg_default_dir/$proj"
   [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
 
-  # ── select snapshot to restore ──────────────────────────────────────────
-  if [[ -z "$requested" || "$requested" == "1" ]]; then        # newest
-    target=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | head -n1)
-  elif [[ "$requested" =~ ^[0-9]+$ ]]; then                    # N-th newest
-    idx="$requested"
-    target=$(ls -1t "$snap_dir"/*.snapshot 2>/dev/null | sed -n "${idx}p")
-  else                                                         # explicit name
+  shopt -s nullglob
+  mapfile -t snaps < <(ls -1t "$snap_dir"/*.snapshot 2>/dev/null)
+  shopt -u nullglob
+  [ "${#snaps[@]}" -gt 0 ] || { echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
+
+  # ── choose snapshot file ────────────────────────────────────────────────
+  if [[ -z "$requested" ]]; then
+    target="${snaps[0]}"
+  elif [[ "$requested" =~ ^[0-9]+$ ]]; then            # numeric index
+    idx=$((requested - 1))
+    [ "$idx" -ge 0 ] && [ "$idx" -lt "${#snaps[@]}" ] || {
+      echo "snapshot: there is no $requested-latest snapshot." >&2; exit 1; }
+    target="${snaps[$idx]}"
+  else                                                 # explicit filename
     [[ "$requested" == *.snapshot ]] || requested="${requested}.snapshot"
     if [[ "$requested" == */* && -f "$requested" ]]; then
-      target="$requested"            # absolute / relative path
+      target="$requested"
     else
       target="$snap_dir/$requested"
     fi
-  fi
-
-  # ── sanity checks ───────────────────────────────────────────────────────
-  if [[ -z "${target:-}" || ! -f "$target" ]]; then
-    if [[ "$requested" =~ ^[0-9]+$ ]]; then
-      echo "snapshot: no ${requested}-th newest snapshot in $snap_dir." >&2
-    else
-      echo "snapshot: '${requested:-}' not found in $snap_dir." >&2
-    fi
-    exit 1
+    [ -f "$target" ] || { echo "snapshot: '$requested' not found in $snap_dir." >&2; exit 1; }
   fi
 
   echo "snapshot: restoring from $(basename "$target")"
@@ -157,4 +155,53 @@ restore_snapshot() {
   done < "$target"
 
   echo "snapshot: restore complete."
+}
+
+###############################################################################
+# 4. Archive all snapshots for the project                                   #
+###############################################################################
+# Usage:
+#   snapshot archive [ARCHIVE_NAME]
+#   • Creates   <snap_dir>/<ARCHIVE_NAME>.zip
+#   • If no name given →  <earliestEpoch>_<latestEpoch>.zip
+#   • Moves (-m) ⇒ source .snapshot files are deleted after zipping
+#
+archive_snapshots() {
+  want_name="${1:-}"
+
+  command -v zip >/dev/null 2>&1 || {
+    echo "snapshot: 'zip' utility not found in PATH." >&2; exit 1; }
+
+  # ── determine project & directory ───────────────────────────────────────
+  local_cfg="$git_root/config.json"
+  proj=""
+  if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+  [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+  [ -z "$proj" ] && proj=$(basename "$git_root")
+
+  snap_dir="$cfg_default_dir/$proj"
+  [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
+
+  shopt -s nullglob
+  mapfile -t snaps < <(ls -1 "$snap_dir"/*.snapshot 2>/dev/null)
+  shopt -u nullglob
+  [ "${#snaps[@]}" -gt 0 ] || { echo "snapshot: no snapshot files to archive." >&2; exit 1; }
+
+  # ── determine archive name ──────────────────────────────────────────────
+  if [[ -z "$want_name" ]]; then
+    earliest_epoch=$(stat -f "%m" "${snaps[0]}" 2>/dev/null \
+                     || stat -c "%Y" "${snaps[0]}")
+    latest_epoch=$(stat -f "%m" "${snaps[-1]}" 2>/dev/null \
+                   || stat -c "%Y" "${snaps[-1]}")
+    want_name="${earliest_epoch}_${latest_epoch}"
+  fi
+  [[ "$want_name" == *.zip ]] || want_name="${want_name}.zip"
+
+  out="$snap_dir/$want_name"
+  (
+    cd "$snap_dir"
+    zip -qm "$out" *.snapshot >/dev/null
+  )
+
+  echo "snapshot: archived → $(basename "$out")"
 }

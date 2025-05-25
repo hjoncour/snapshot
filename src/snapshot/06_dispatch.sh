@@ -34,6 +34,13 @@ case "$cmd" in
     ;;
 
   ###########################################################################
+  # Archive snapshots (NEW)
+  ###########################################################################
+  archive|--archive)
+    archive_snapshots "$@"
+    ;;
+
+  ###########################################################################
   # ─────────────────────────── projects listing ──────────────────────────── #
   ###########################################################################
   projects|--projects)
@@ -168,7 +175,7 @@ case "$cmd" in
     ;;
 
   ###########################################################################
-  # Restore latest snapshot                                                 #
+  # Restore snapshot                                                        #
   ###########################################################################
   restore|--restore)
       restore_snapshot "$@"
@@ -304,6 +311,7 @@ Commands:
   tree, --tree
   print, --print
   copy, --copy
+  archive, --archive
   projects, --projects
   set-separators:on|off
   set-verbose:mute|minimal|normal|verbose|debug
