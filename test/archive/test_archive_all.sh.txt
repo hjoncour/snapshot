@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+#
+# test_archive.sh ─ validate “snapshot archive”
+#
+#   • Running when no snapshots exist fails (exit≠0)
+#   • Two snapshots → one <earliest>_<latest>.zip created
+#   • All .snapshot files are removed afterwards
+#   • Zip contains the two original files, byte-for-byte identical
+#   • Running “archive” again (with nothing left) fails
+#
+set -euo pipefail
+
+###############################################################################
+# 0. Locate repo root (to build the stub)                                     #
+###############################################################################
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(git -C "$script_dir/../.." rev-parse --show-toplevel)"
+
+###############################################################################
+# 1. Isolated HOME + tiny Git repo                                           #
+###############################################################################
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+export HOME="$tmpdir/home"
+mkdir -p "$HOME"
+
+cd "$tmpdir"
+git init -q
+git config user.email "ci@example.com"
+git config user.name  "CI Test"
+
+echo 'console.log("Hello 1");' > foo.js
+echo '{}'                      > config.json
+git add foo.js config.json
+git commit -m "init" -q
+
+###############################################################################
+# 2. Build one-file snapshot stub + helper                                   #
+###############################################################################
+mkdir -p src
+bash "$repo_root/src/make_snapshot.sh" > src/snapshot.sh
+chmod +x src/snapshot.sh
+snap() { SNAPSHOT_CONFIG="$tmpdir/global.json" bash src/snapshot.sh "$@"; }
+
+# global config so snapshots live in …/snapshot/demo/
+echo '{"project":"demo"}' > "$tmpdir/global.json"
+snap_dir="$HOME/Library/Application Support/snapshot/demo"
+
+###############################################################################
+# 3. “archive” with **no** snapshots → must fail                             #
+###############################################################################
+if snap archive >/dev/null 2>&1; then
+  echo "❌ archive succeeded even though no snapshots existed"
+  exit 1
+fi
+echo "✅ archive fails gracefully when no snapshots exist"
+
+###############################################################################
+# 4. Create TWO snapshots (different epochs)                                 #
+###############################################################################
+snap          >/dev/null         # 1st (auto-named)
+sleep 1                          # ensure a different epoch
+snap >/dev/null                  # 2nd (auto-named)
+
+mapfile -t snaps < <(ls -1 "$snap_dir"/*.snapshot | sort)
+if [ "${#snaps[@]}" -ne 2 ]; then
+  echo "❌ expected 2 snapshots, got ${#snaps[@]}"
+  exit 1
+fi
+
+# remember their basenames & checksums
+orig1_base=$(basename "${snaps[0]}")
+orig2_base=$(basename "${snaps[1]}")
+sum1=$(sha256sum "${snaps[0]}" | awk '{print $1}')
+sum2=$(sha256sum "${snaps[1]}" | awk '{print $1}')
+
+earliest_epoch=${orig1_base%%_*}
+latest_epoch=${orig2_base%%_*}
+expected_zip="${earliest_epoch}_${latest_epoch}.zip"
+
+###############################################################################
+# 5. Run “snapshot archive” (no args)                                        #
+###############################################################################
+snap archive >/dev/null
+
+# a) Zip exists, snapshots gone
+if [ ! -f "$snap_dir/$expected_zip" ]; then
+  echo "❌ expected archive '$expected_zip' not found"
+  ls -l "$snap_dir"
+  exit 1
+fi
+
+if ls "$snap_dir"/*.snapshot 2>/dev/null | grep -q .; then
+  echo "❌ .snapshot files still present after archiving"
+  exit 1
+fi
+
+# b) Zip contains the two correct files, byte-identical
+tmp_unzip=$(mktemp -d)
+unzip -qq "$snap_dir/$expected_zip" -d "$tmp_unzip"
+
+for base in "$orig1_base" "$orig2_base"; do
+  [ -f "$tmp_unzip/$base" ] || {
+    echo "❌ file '$base' missing inside zip"
+    exit 1
+  }
+done
+
+new_sum1=$(sha256sum "$tmp_unzip/$orig1_base" | awk '{print $1}')
+new_sum2=$(sha256sum "$tmp_unzip/$orig2_base" | awk '{print $1}')
+
+if [[ "$new_sum1" != "$sum1" || "$new_sum2" != "$sum2" ]]; then
+  echo "❌ checksums inside zip do not match originals"
+  exit 1
+fi
+rm -rf "$tmp_unzip"
+
+echo "✅ archive creates '$expected_zip', removes originals, preserves content"
+
+###############################################################################
+# 6. “archive” again → must fail (nothing to archive)                        #
+###############################################################################
+if snap archive >/dev/null 2>&1; then
+  echo "❌ archive succeeded even though no snapshots remain"
+  exit 1
+fi
+echo "✅ archive fails when nothing is left to archive"
+
+###############################################################################
+# 7. Done                                                                    #
+###############################################################################
+echo "✅ test/archive/test_archive.sh"
