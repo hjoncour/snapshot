@@ -205,3 +205,66 @@ archive_snapshots() {
 
   echo "snapshot: archived → $(basename "$out")"
 }
+
+###############################################################################
+# 5. List all snapshots for the current project                               #
+###############################################################################
+# Usage:
+#   snapshot list-snapshots [asc|desc:KEY]
+#   snapshot --list-snapshots [asc|desc:KEY]
+#
+#   KEY ∈ {name|size|date}      (asc is default)
+#   Output: one filename per line, already sorted.
+#
+list_snapshots() {
+  local sort_arg="${1:-}"
+  local sort_dir="asc"
+  local sort_key="name"
+
+  if [[ "$sort_arg" =~ ^(asc|desc):(name|size|date)$ ]]; then
+    sort_dir="${BASH_REMATCH[1]}"
+    sort_key="${BASH_REMATCH[2]}"
+  elif [[ -n "$sort_arg" ]]; then
+    echo "snapshot: unknown list-snapshots option '$sort_arg'." >&2
+    exit 2
+  fi
+
+  # ── resolve <project> → <snap_dir> ───────────────────────────────────────
+  local_cfg="$git_root/config.json"
+  proj=""
+  if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+  [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
+  [ -z "$proj" ] && proj=$(basename "$git_root")
+
+  snap_dir="$cfg_default_dir/$proj"
+  [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
+
+  shopt -s nullglob
+  mapfile -t snaps < <(ls -1 "$snap_dir"/*.snapshot 2>/dev/null)
+  shopt -u nullglob
+  [ "${#snaps[@]}" -gt 0 ] || { echo "snapshot: no snapshot files found." >&2; exit 1; }
+
+  # ── gather meta rows:  <name>|<sizeKB>|<epoch> ───────────────────────────
+  rows=()
+  for f in "${snaps[@]}"; do
+    name=$(basename "$f")
+    epoch=$(_stat_mtime "$f")
+    size=$(_stat_size  "$f")
+    rows+=( "$name|$size|$epoch" )
+  done
+
+  # ── sort rows ────────────────────────────────────────────────────────────
+  case "$sort_key" in
+    name) field=1; num=""  ;;
+    size) field=2; num="-n";;
+    date) field=3; num="-n";;
+  esac
+  [[ "$sort_dir" == desc ]] && rev="-r" || rev=""
+
+  sorted=$(
+    printf '%s\n' "${rows[@]}" | sort -t'|' $num $rev -k"$field","$field"
+  )
+
+  # ── final output: filenames only (one per line) ──────────────────────────
+  printf '%s\n' "$sorted" | cut -d'|' -f1
+}

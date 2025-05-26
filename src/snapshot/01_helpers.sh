@@ -12,6 +12,28 @@ _verbose() {
   esac
 }
 
+# ---------------------------------------------------------------------------
+# Cross-platform stat helpers
+#   _stat_mtime  → POSIX epoch (seconds since 1970-01-01 UTC)
+#   _stat_size   → file size in *bytes*
+# ---------------------------------------------------------------------------
+_stat_mtime() {
+  # GNU stat supports -c, BSD/macOS uses -f
+  if stat -c '%Y' "$1" >/dev/null 2>&1; then
+    stat -c '%Y' "$1"            # GNU / Linux
+  else
+    stat -f '%m' "$1"            # BSD / macOS
+  fi
+}
+
+_stat_size() {
+  if stat -c '%s' "$1" >/dev/null 2>&1; then
+    stat -c '%s' "$1"
+  else
+    stat -f '%z' "$1"
+  fi
+}
+
 need_jq() {
   command -v jq >/dev/null 2>&1 && return
   echo "snapshot: error - '$1' requires jq (not found in PATH)." >&2
