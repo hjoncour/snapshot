@@ -248,8 +248,8 @@ list_snapshots() {
   rows=()
   for f in "${snaps[@]}"; do
     name=$(basename "$f")
-    size=$(du -k "$f" | awk '{print $1}')
-    epoch=$(stat -f "%m" "$f" 2>/dev/null || stat -c "%Y" "$f")
+    epoch=$(_stat_mtime "$f")
+    size=$(_stat_size  "$f")
     rows+=( "$name|$size|$epoch" )
   done
 
