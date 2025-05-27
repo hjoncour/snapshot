@@ -30,7 +30,6 @@ update installed config.json version
 - install run test
 - snapshot --ignore-tests (ignore test files)
 
-
 larger refactor
 - split .sh files into folders:
     - helpers
