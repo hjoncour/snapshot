@@ -13,6 +13,17 @@ _verbose() {
 }
 
 # ---------------------------------------------------------------------------
+# Convert raw **bytes** → human KB (rounded *up* to the next KiB)
+#   0-1023  → 1
+#   1024-2047 → 2
+#   …
+# ---------------------------------------------------------------------------
+_human_kb() {
+  local bytes=${1:-0}
+  echo $(((bytes + 1023) / 1024))
+}
+
+# ---------------------------------------------------------------------------
 # Cross-platform stat helpers
 #   _stat_mtime  → POSIX epoch (seconds since 1970-01-01 UTC)
 #   _stat_size   → file size in *bytes*
