@@ -49,7 +49,7 @@ save_snapshot() {
 
   epoch=$(date +%s)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
-  branch=${branch//\//_}                       # keep filenames FS-friendly
+  branch=${branch//\//_}
   commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
   base_names=()
@@ -223,44 +223,56 @@ archive_snapshots() {
 #
 list_snapshots() {
   local arg1="${1:-}"
-  local want_details=false
-  local sort_dir="desc"
-  local sort_key="date"
+  local want_details=false sort_dir="desc" sort_key="date"
+  local -a filter_tags
 
-  case "$arg1" in
-    details|-d) want_details=true ;;
-    asc:*|desc:*) IFS=':' read -r sort_dir sort_key <<<"$arg1" ;;
-    "") ;;  # default
-    *)  echo "snapshot: unknown --list option '$arg1'." >&2; exit 2 ;;
-  esac
+  # ── Parse “tag” sub-command vs. normal --list flags ──────────────────────
+  if [[ "$arg1" == "tag" ]]; then
+    shift
+    while (( $# )); do
+      case "$1" in
+        details|-d)          want_details=true            ;;
+        asc:*|desc:*)        IFS=':' read -r sort_dir sort_key <<<"$1" ;;
+        *)                   filter_tags+=( "$1" )        ;;
+      esac
+      shift
+    done
+  else
+    case "$arg1" in
+      details|-d)          want_details=true; shift     ;;
+      asc:*|desc:*)        IFS=':' read -r sort_dir sort_key <<<"$arg1"; shift ;;
+    esac
+  fi
 
-  # ── resolve project directory ────────────────────────────────────────────
-  local_cfg="$git_root/config.json"
-  proj=""
-  if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
+  # ── Locate snapshot directory ─────────────────────────────────────────────
+  local local_cfg="$git_root/config.json" proj snap_dir
+  if [ -f "$local_cfg" ]; then
+    proj=$(jq -r '.project // empty' "$local_cfg")
+  fi
   [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
   [ -z "$proj" ] && proj=$(basename "$git_root")
-
   snap_dir="$cfg_default_dir/$proj"
   [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
 
+  # ── Gather all .snapshot files ───────────────────────────────────────────
   shopt -s nullglob
-  mapfile -t files < <(ls -1 "$snap_dir"/*.snapshot 2>/dev/null)
+  mapfile -t files < <(ls -1t "$snap_dir"/*.snapshot)
   shopt -u nullglob
-  [ "${#files[@]}" -gt 0 ] || { echo "snapshot: no snapshot files found." >&2; exit 1; }
+  [ ${#files[@]} -gt 0 ] || { echo "snapshot: no snapshot files found." >&2; exit 1; }
 
-  # ── gather rows: name|sizeKB|epoch|branch|tags ───────────────────────────
-  rows=()
+  # ── Build raw rows: name_no_tags|branch|epoch|size_kb|tag_list ────────────
+  local -a rows
   for f in "${files[@]}"; do
-    base=$(basename "$f" .snapshot)
+    local base name_no_tags tag_part without_epoch branch commit
+    local epoch size_kb
 
-    # modern “…__[tag1,tag2]”  OR legacy “…__tag1_tag2”
-    if [[ "$base" == *"__["*"]" ]]; then
+    base=$(basename "$f" .snapshot)
+    if [[ "$base" == *"[]{"*"]" ]]; then
       tag_part="${base##*__}"
       name_no_tags="${base%%__*}"
     elif [[ "$base" == *"__"* ]]; then
       tag_part="${base##*__}"
-      tag_part="${tag_part//_/\\,}"
+      tag_part="${tag_part//_/\,}"
       name_no_tags="${base%%__*}"
     else
       tag_part="-"
@@ -275,57 +287,86 @@ list_snapshots() {
     epoch=$(_stat_mtime "$f")
     size_kb=$(_human_kb "$(_stat_size "$f")")
 
-    rows+=( "${base}|${size_kb}|${epoch}|${branch}|${tag_part}" )
+    rows+=( "${name_no_tags}|${branch}|${epoch}|${size_kb}|${tag_part}" )
   done
 
-  # ── sort rows ────────────────────────────────────────────────────────────
+  # ── Filter by tags (if requested) ────────────────────────────────────────
+  if [ ${#filter_tags[@]} -gt 0 ]; then
+    local -a tmp
+    for row in "${rows[@]}"; do
+      local tf="${row##*|}"
+      for t in "${filter_tags[@]}"; do
+        [[ ",$tf," == *",$t,"* ]] && { tmp+=( "$row" ); break; }
+      done
+    done
+    rows=( "${tmp[@]}" )
+  fi
+
+  # ── Sort rows ─────────────────────────────────────────────────────────────
+  local field num rev
   case "$sort_key" in
-    name) field=1; num="";;
-    size) field=2; num="-n";;
-    date|*) field=3; num="-n";;
+    name) field=1; num=""  ;;
+    size) field=4; num="-n" ;;
+    date|*) field=3; num="-n" ;;
   esac
   [[ "$sort_dir" == desc ]] && rev="-r" || rev=""
+  IFS=$'\n' read -r -d '' -a sorted < <(
+    printf '%s\n' "${rows[@]}" | sort -t'|' $num $rev -k"$field","$field"
+    printf '\0'
+  )
+  unset IFS
 
-  sorted=$(printf '%s\n' "${rows[@]}" |
-           sort -t'|' $num $rev -k"$field","$field")
-
-  # ── simple list mode ─────────────────────────────────────────────────────
+  # ── Simple list mode ─────────────────────────────────────────────────────
   if ! $want_details; then
-    printf '%s\n' "$sorted" | cut -d'|' -f1
+    for row in "${sorted[@]}"; do
+      echo "${row%%|*}"
+    done
     return
   fi
 
-  # ── pretty table mode ────────────────────────────────────────────────────
-  header_name="Snapshot"
-  header_branch="Branch"
-  header_date="Date (UTC)"
-  header_size="Size"
-  header_tags="Tags"
+  # ── DETAILS TABLE: compute column widths dynamically ─────────────────────
+  local h1="Snapshot"    h2="Branch"    h3="Date (UTC)"
+  local h4="Size"        h5="Tags"
+  local w1=${#h1}        w2=${#h2}      w3=${#h3}
+  local w4=${#h4}        w5=${#h5}
 
-  max_name=${#header_name}
-  max_branch=${#header_branch}
-  max_date=19               # fixed “YYYY-MM-DD HH:MM:SS”
-  max_size=${#header_size}
+  local row snap branch epoch size tag date_fmt size_label
+  for row in "${sorted[@]}"; do
+    IFS='|' read -r snap branch epoch size tag <<<"$row"
+    # Snapshot
+    (( ${#snap}   > w1 )) && w1=${#snap}
+    # Branch
+    (( ${#branch} > w2 )) && w2=${#branch}
+    # Date
+    date_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
+               || date -u -r "$epoch" +'%Y-%m-%d %H:%M:%S')
+    (( ${#date_fmt} > w3 )) && w3=${#date_fmt}
+    # Size (include " KB")
+    size_label="${size} KB"
+    (( ${#size_label} > w4 )) && w4=${#size_label}
+    # Tags
+    (( ${#tag}    > w5 )) && w5=${#tag}
+  done
 
-  while IFS='|' read -r _n sz _e br _t; do
-    (( ${#_n}  > max_name   )) && max_name=${#_n}
-    (( ${#br}  > max_branch )) && max_branch=${#br}
-    len_size=$(( ${#sz} + 3 ))        # “… KB”
-    (( len_size > max_size )) && max_size=$len_size
-  done <<<"$sorted"
+  # ── Print header ─────────────────────────────────────────────────────────
+  local sep=" | "
+  printf "%-${w1}s${sep}%-${w2}s${sep}%-${w3}s${sep}%${w4}s${sep}%-${w5}s\n" \
+         "$h1" "$h2" "$h3" "$h4" "$h5"
 
-  dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
+  # ── Print divider ────────────────────────────────────────────────────────
+  printf "%s${sep}%s${sep}%s${sep}%s${sep}%s\n" \
+         "$(printf '%*s' "$w1" '' | tr ' ' '-')" \
+         "$(printf '%*s' "$w2" '' | tr ' ' '-')" \
+         "$(printf '%*s' "$w3" '' | tr ' ' '-')" \
+         "$(printf '%*s' "$w4" '' | tr ' ' '-')" \
+         "$(printf '%*s' "$w5" '' | tr ' ' '-')"
 
-  printf "%-${max_name}s | %-${max_branch}s | %-${max_date}s | %${max_size}s | %s\n" \
-         "$header_name" "$header_branch" "$header_date" "$header_size" "$header_tags"
-  printf "%-${max_name}s | %-${max_branch}s | %-${max_date}s | %${max_size}s | %s\n" \
-         "$(dash "$max_name")" "$(dash "$max_branch")" "$(dash "$max_date")" \
-         "$(dash "$max_size")" "$(dash ${#header_tags})"
-
-  while IFS='|' read -r n sz epo br tg; do
-    date_fmt=$(date -u -d "@$epo" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
-               || date -u -r "$epo" +'%Y-%m-%d %H:%M:%S')
-    printf "%-${max_name}s | %-${max_branch}s | %-${max_date}s | %${max_size}s | %s\n" \
-           "$n" "$br" "$date_fmt" "${sz} KB" "$tg"
-  done <<<"$sorted"
+  # ── Print each row ───────────────────────────────────────────────────────
+  for row in "${sorted[@]}"; do
+    IFS='|' read -r snap branch epoch size tag <<<"$row"
+    date_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
+               || date -u -r "$epoch" +'%Y-%m-%d %H:%M:%S')
+    printf "%-${w1}s${sep}%-${w2}s${sep}%-${w3}s${sep}%${w4}s${sep}%-${w5}s\n" \
+           "$snap" "$branch" "$date_fmt" "${size} KB" "$tag"
+  done
 }

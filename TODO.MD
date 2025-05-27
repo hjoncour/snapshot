@@ -29,3 +29,14 @@ update installed config.json version
 - track test coverage
 - install run test
 - snapshot --ignore-tests (ignore test files)
+
+
+larger refactor
+- split .sh files into folders:
+    - helpers
+    - core
+    - ignore
+    - regex
+    - dispatch
+
+fix tag handling in name 
