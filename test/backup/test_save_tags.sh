@@ -50,7 +50,7 @@ EOF
 
 echo "→ single file, two tags"
 snap --name one --tag t1 t2 >/dev/null
-expected="$HOME/Library/Application Support/snapshot/demo/one__t1_t2.snapshot"
+expected="$HOME/Library/Application Support/snapshot/demo/one__[t1,t2].snapshot"
 [ -f "$expected" ] || { echo "❌ expected $expected"; exit 1; }
 echo "✅ single file, two tags"
 
@@ -65,7 +65,7 @@ EOF
 echo "→ multiple files, two tags"
 snap --name a b --tag x y >/dev/null
 for n in a b; do
-  f="$HOME/Library/Application Support/snapshot/demo/${n}__x_y.snapshot"
+  f="$HOME/Library/Application Support/snapshot/demo/${n}__[x,y].snapshot"
   [ -f "$f" ] || { echo "❌ expected $f"; exit 1; }
 done
 echo "✅ multiple files, two tags"
@@ -121,7 +121,7 @@ fi
 # Verify snapshot files exist
 ###############################################################################
 for n in c d; do
-  p="$HOME/Library/Application Support/snapshot/demo/${n}__z_w.snapshot"
+  p="$HOME/Library/Application Support/snapshot/demo/${n}__[z,w].snapshot"
   [ -f "$p" ] || { echo "❌ missing $p"; exit 1; }
 done
 echo "✅ multiple files, tags, with --print and --copy"

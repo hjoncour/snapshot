@@ -24,3 +24,7 @@ Settings:
 
 update installed config.json version
 
+- Fix readme
+- "snapshot update"
+- track test coverage
+- install run test

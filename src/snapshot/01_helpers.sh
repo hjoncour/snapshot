@@ -13,6 +13,18 @@ _verbose() {
 }
 
 # ---------------------------------------------------------------------------
+# Convert raw **bytes** → human KB (rounded *up* to the next KiB)
+#   0-1023  → 1
+#   1024-2047 → 2
+#   …
+# ---------------------------------------------------------------------------
+_human_kb() {
+  local bytes=${1:-0}
+  # round up so even 1‑byte files show as 1 KB
+  printf '%d' $(( (bytes + 1023) / 1024 ))
+}
+
+# ---------------------------------------------------------------------------
 # Cross-platform stat helpers
 #   _stat_mtime  → POSIX epoch (seconds since 1970-01-01 UTC)
 #   _stat_size   → file size in *bytes*
@@ -41,8 +53,8 @@ need_jq() {
 }
 
 show_config() {
-  # pretty-print everything, but inline our arrays/objects so tests can
-  # string-match the prefix exactly.
+  # pretty‑print everything, but inline our arrays/objects so tests can
+  # string‑match the prefix exactly.
   local proj version owner desc           # scalars
   local types ignore_files ignore_paths   # joined arrays
   local sep_pref verb_pref                # preferences
@@ -50,7 +62,7 @@ show_config() {
   proj=$(jq -r  '.project // ""'                       "$global_cfg")
   version=$(jq -r '.version // ""'                     "$global_cfg")
   owner=$(jq -r  '.owner // ""'                        "$global_cfg")
-  desc=$(jq -r   '.description | @json'                 "$global_cfg")
+  desc=$(jq -r   '.description | @json'                  "$global_cfg")
 
   types=$(jq -r '.settings.types_tracked   // [] | map(@json) | join(", ")'   "$global_cfg")
   sep_pref=$(jq -r '.settings.preferences.separators // true'                "$global_cfg")

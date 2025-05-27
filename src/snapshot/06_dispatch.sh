@@ -177,8 +177,8 @@ case "$cmd" in
   ###########################################################################
   # List snapshots
   ###########################################################################
-  list-snapshots|--list-snapshots)
-    list_snapshots "${1:-}"
+  list|-l|--list|list-snapshots|--list-snapshots)
+    list_snapshots "$@"
     ;;
   ###########################################################################
   # Restore snapshot                                                        #
