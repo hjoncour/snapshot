@@ -28,3 +28,4 @@ update installed config.json version
 - "snapshot update"
 - track test coverage
 - install run test
+- snapshot --ignore-tests (ignore test files)

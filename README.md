@@ -48,7 +48,7 @@ code                            Generate a code snapshot # should be removed
 --config, -c                    Show the global configuration file
 --ignore, -i                    Add one or more ignore patterns
 --remove-ignore                 Remove one or more ignore patterns
---remove-all-ignored            Clear BOTH ignore lists
+--remove-all-ignored            Clear both ignore lists
 --remove-all-ignored-paths      Clear ignore_path list only
 --remove-all-ignored-files      Clear ignore_file list only
 --add-type                      Add one or more file extensions to track
@@ -67,5 +67,8 @@ $ bash test.sh
 
 ## Contributions:
 Contributions are very welcome, please read `TODO.md` for inspiration, but don't hesitate to submit a Pull Request if you have other great ideas or improvements.
+<<<<<<< HEAD
 
 test
+=======
+>>>>>>> 4969438 (update)
