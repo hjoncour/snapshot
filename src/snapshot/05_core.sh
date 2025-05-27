@@ -4,7 +4,8 @@
 #   • dump_code / filtered_for_tree
 #   • save_snapshot
 #   • restore_snapshot
-#   • archive_snapshots   ← NEW
+#   • archive_snapshots
+#   • list_snapshots
 #
 set -euo pipefail
 
@@ -221,20 +222,19 @@ archive_snapshots() {
 #   ORDER arg:  asc|desc:(name|size|date)
 #
 list_snapshots() {
-  local arg1="${1:-}"                 # may be order or 'details' / -d
+  local arg1="${1:-}"
   local want_details=false
-  local sort_dir="desc"               # default = newest first
+  local sort_dir="desc"
   local sort_key="date"
 
   case "$arg1" in
     details|-d) want_details=true ;;
-    asc:*|desc:*)
-        IFS=':' read -r sort_dir sort_key <<<"$arg1" ;;
-    "" ) ;;                           # no options
-    * ) echo "snapshot: unknown --list option '$arg1'." >&2; exit 2 ;;
+    asc:*|desc:*) IFS=':' read -r sort_dir sort_key <<<"$arg1" ;;
+    "") ;;  # default
+    *)  echo "snapshot: unknown --list option '$arg1'." >&2; exit 2 ;;
   esac
 
-  # ── resolve project → snapshot directory ────────────────────────────────
+  # ── resolve project directory ────────────────────────────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -249,72 +249,69 @@ list_snapshots() {
   shopt -u nullglob
   [ "${#files[@]}" -gt 0 ] || { echo "snapshot: no snapshot files found." >&2; exit 1; }
 
-  # ── collect meta rows: name|size|epoch|branch|tagStr ────────────────────
+  # ── gather rows: name|sizeKB|epoch|branch|tags ───────────────────────────
   rows=()
   for f in "${files[@]}"; do
     base=$(basename "$f" .snapshot)
 
-    # split off optional tag suffix “__[…]" first
+    # modern “…__[tag1,tag2]”  OR legacy “…__tag1_tag2”
     if [[ "$base" == *"__["*"]" ]]; then
       tag_part="${base##*__}"
-      tag_part="${tag_part#[}" ; tag_part="${tag_part%]}"
+      name_no_tags="${base%%__*}"
+    elif [[ "$base" == *"__"* ]]; then
+      tag_part="${base##*__}"
+      tag_part="${tag_part//_/\\,}"
       name_no_tags="${base%%__*}"
     else
       tag_part="-"
       name_no_tags="$base"
     fi
 
-    # remove leading epoch_  → branch_commit  split on last “_”
     without_epoch="${name_no_tags#*_}"
     branch="${without_epoch%_*}"
     commit="${without_epoch##*_}"
-    # If there was no “_” after the epoch -> treat whole part as branch
-    if [[ "$branch" == "$without_epoch" ]]; then
-      branch="$without_epoch"
-      commit="-"
-    fi
+    [[ "$branch" == "$without_epoch" ]] && commit="-"
 
     epoch=$(_stat_mtime "$f")
-    size_bytes=$(_stat_size "$f")
-    size_kb=$(_human_kb "$size_bytes")
+    size_kb=$(_human_kb "$(_stat_size "$f")")
 
     rows+=( "${base}|${size_kb}|${epoch}|${branch}|${tag_part}" )
   done
 
-  # ── sorting ─────────────────────────────────────────────────────────────
+  # ── sort rows ────────────────────────────────────────────────────────────
   case "$sort_key" in
     name) field=1; num="";;
     size) field=2; num="-n";;
-    date) field=3; num="-n";;
-    *)    field=3; num="-n";;
+    date|*) field=3; num="-n";;
   esac
   [[ "$sort_dir" == desc ]] && rev="-r" || rev=""
 
   sorted=$(printf '%s\n' "${rows[@]}" |
            sort -t'|' $num $rev -k"$field","$field")
 
+  # ── simple list mode ─────────────────────────────────────────────────────
   if ! $want_details; then
-    # simple mode – filenames only
     printf '%s\n' "$sorted" | cut -d'|' -f1
     return
   fi
 
-  # ── details table – compute dynamic widths ─────────────────────────────
+  # ── pretty table mode ────────────────────────────────────────────────────
   header_name="Snapshot"
   header_branch="Branch"
   header_date="Date (UTC)"
-  header_size="KB"
+  header_size="Size"
   header_tags="Tags"
 
   max_name=${#header_name}
   max_branch=${#header_branch}
-  max_date=${#header_date}
+  max_date=19               # fixed “YYYY-MM-DD HH:MM:SS”
   max_size=${#header_size}
 
-  while IFS='|' read -r n sz _e br _t; do
-    (( ${#n}  > max_name   )) && max_name=${#n}
-    (( ${#br} > max_branch )) && max_branch=${#br}
-    (( ${#sz} > max_size   )) && max_size=${#sz}
+  while IFS='|' read -r _n sz _e br _t; do
+    (( ${#_n}  > max_name   )) && max_name=${#_n}
+    (( ${#br}  > max_branch )) && max_branch=${#br}
+    len_size=$(( ${#sz} + 3 ))        # “… KB”
+    (( len_size > max_size )) && max_size=$len_size
   done <<<"$sorted"
 
   dash() { printf '%*s' "$1" '' | tr ' ' '-'; }
@@ -329,6 +326,6 @@ list_snapshots() {
     date_fmt=$(date -u -d "@$epo" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
                || date -u -r "$epo" +'%Y-%m-%d %H:%M:%S')
     printf "%-${max_name}s | %-${max_branch}s | %-${max_date}s | %${max_size}s | %s\n" \
-           "$n" "$br" "$date_fmt" "$sz" "$tg"
+           "$n" "$br" "$date_fmt" "${sz} KB" "$tg"
   done <<<"$sorted"
 }

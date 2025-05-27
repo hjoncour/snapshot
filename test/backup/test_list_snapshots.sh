@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # test_list_snapshots.sh – verify that
-#   • snapshot list-snapshots enumerates the *right* files
-#   • the asc/desc sorting by name | size | date works
+#   • snapshot list-snapshots enumerates the *right* files (without “.snapshot”)
+#   • the asc/desc sorting by name | size | date works (also sans suffix)
 #
 
 set -euo pipefail
@@ -76,9 +76,10 @@ make_snap cherry 100   #   largest, latest
 
 ###############################################################################
 # 5-A. Enumeration – make sure list-snapshots prints *exactly* the files
+#       (with the “.snapshot” suffix stripped)
 ###############################################################################
-expected_set=$(ls -1 "$support_dir" | sort)
-actual_set=$(snap list-snapshots      | sort)
+expected_set=$(ls -1 "$support_dir" | sed 's/\.snapshot$//' | sort)
+actual_set=$(snap list-snapshots | sed 's/\.snapshot$//' | sort)
 
 if [[ "$actual_set" != "$expected_set" ]]; then
   echo "❌ list-snapshots did not return the correct set of files" >&2
@@ -89,11 +90,11 @@ fi
 echo "✅ list-snapshots enumerates the correct files"
 
 ###############################################################################
-# 5-B. Sorting checks
+# 5-B. Sorting checks (all comparisons without “.snapshot”)
 ###############################################################################
 # Handy strings for the six orderings we expect
-asc_name=$'apple.snapshot\nbanana.snapshot\ncherry.snapshot'
-desc_name=$'cherry.snapshot\nbanana.snapshot\napple.snapshot'
+asc_name=$'apple\nbanana\ncherry'
+desc_name=$'cherry\nbanana\napple'
 
 # Because we *grew* the file on every snapshot:
 asc_size=$asc_name
@@ -106,7 +107,7 @@ desc_date=$desc_name
 fail=0
 check_order() {
   local label="$1" expected="$2"; shift 2
-  out=$(snap "$@")
+  out=$(snap "$@" | sed 's/\.snapshot$//')
   if [[ "$out" == "$expected" ]]; then
     printf '  - %s ✅\n' "$label"
   else
