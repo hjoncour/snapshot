@@ -39,7 +39,5 @@ larger refactor
     - dispatch
 
 fix tag handling in name 
-<<<<<<< HEAD
-<<<<<<< HEAD
 
 tests to run in gha vs tests to run only locally
