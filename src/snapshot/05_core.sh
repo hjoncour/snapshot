@@ -9,6 +9,11 @@
 #
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Global safety-net: keep the symbol defined so “set -u” never trips
+# ---------------------------------------------------------------------------
+filter_tags=()      # will later be shadowed by a local inside list_snapshots
+
 ###############################################################################
 # 1. Dump helpers                                                             #
 ###############################################################################
@@ -31,7 +36,7 @@ filtered_for_tree() {
 }
 
 ###############################################################################
-# 2.  Save a snapshot dump to disk                                            #
+# 2. Save a snapshot dump to disk                                             #
 ###############################################################################
 save_snapshot() {
   [ "$no_snapshot" = true ] && { cat >/dev/null; return 0; }
@@ -88,17 +93,15 @@ save_snapshot() {
 }
 
 ###############################################################################
-# 3. Restore snapshot (latest, nth-latest, or specific file)                  #
+# 3. Restore snapshot                                                         #
 ###############################################################################
-# Usage:
-#   snapshot restore                   → newest snapshot for project
-#   snapshot restore N                 → N-th newest (1 = newest)
-#   snapshot restore FILE              → restore FILE (adds .snapshot if missing)
-#
+#   snapshot restore            → newest
+#   snapshot restore N          → N-th newest (1 = newest)
+#   snapshot restore FILE       → exact file (adds .snapshot if missing)
 restore_snapshot() {
-  requested="${1:-}"     # empty / number / filename
+  requested="${1:-}"
 
-  # ── determine project name & snapshot dir ───────────────────────────────
+  # ── locate project & directory ──────────────────────────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -113,15 +116,15 @@ restore_snapshot() {
   shopt -u nullglob
   [ "${#snaps[@]}" -gt 0 ] || { echo "snapshot: no snapshot files in $snap_dir." >&2; exit 1; }
 
-  # ── choose snapshot file ────────────────────────────────────────────────
+  # ── pick target file ────────────────────────────────────────────────────
   if [[ -z "$requested" ]]; then
     target="${snaps[0]}"
-  elif [[ "$requested" =~ ^[0-9]+$ ]]; then            # numeric index
+  elif [[ "$requested" =~ ^[0-9]+$ ]]; then
     idx=$((requested - 1))
     [ "$idx" -ge 0 ] && [ "$idx" -lt "${#snaps[@]}" ] || {
       echo "snapshot: there is no $requested-latest snapshot." >&2; exit 1; }
     target="${snaps[$idx]}"
-  else                                                 # explicit filename
+  else
     [[ "$requested" == *.snapshot ]] || requested="${requested}.snapshot"
     if [[ "$requested" == */* && -f "$requested" ]]; then
       target="$requested"
@@ -164,19 +167,13 @@ restore_snapshot() {
 ###############################################################################
 # 4. Archive all snapshots for the project                                   #
 ###############################################################################
-# Usage:
-#   snapshot archive [ARCHIVE_NAME]
-#   • Creates   <snap_dir>/<ARCHIVE_NAME>.zip
-#   • If no name given →  <earliestEpoch>_<latestEpoch>.zip
-#   • Moves (-m) ⇒ source .snapshot files are deleted after zipping
-#
 archive_snapshots() {
   want_name="${1:-}"
 
   command -v zip >/dev/null 2>&1 || {
     echo "snapshot: 'zip' utility not found in PATH." >&2; exit 1; }
 
-  # ── determine project & directory ───────────────────────────────────────
+  # ── locate project dir ──────────────────────────────────────────────────
   local_cfg="$git_root/config.json"
   proj=""
   if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
@@ -191,83 +188,74 @@ archive_snapshots() {
   shopt -u nullglob
   [ "${#snaps[@]}" -gt 0 ] || { echo "snapshot: no snapshot files to archive." >&2; exit 1; }
 
-  # ── determine archive name ──────────────────────────────────────────────
+  # ── decide archive name ────────────────────────────────────────────────
   if [[ -z "$want_name" ]]; then
-    earliest_epoch=$(stat -f "%m" "${snaps[0]}" 2>/dev/null \
-                     || stat -c "%Y" "${snaps[0]}")
-    latest_epoch=$(stat -f "%m" "${snaps[-1]}" 2>/dev/null \
-                   || stat -c "%Y" "${snaps[-1]}")
+    earliest_epoch=$(stat -c "%Y" "${snaps[-1]}" 2>/dev/null || stat -f "%m" "${snaps[-1]}")
+    latest_epoch=$(stat -c "%Y" "${snaps[0]}"  2>/dev/null || stat -f "%m" "${snaps[0]}")
     want_name="${earliest_epoch}_${latest_epoch}"
   fi
   [[ "$want_name" == *.zip ]] || want_name="${want_name}.zip"
 
-  out="$snap_dir/$want_name"
   (
     cd "$snap_dir"
-    zip -qm "$out" *.snapshot >/dev/null
+    zip -qm "$want_name" *.snapshot >/dev/null
   )
 
-  echo "snapshot: archived → $(basename "$out")"
+  echo "snapshot: archived → $want_name"
 }
 
 ###############################################################################
-# 5.  List all snapshots for the current project                              #
+# 5. List all snapshots for the current project                              #
 ###############################################################################
-# Usage:
-#   snapshot --list                → simple list (latest first)
-#   snapshot --list asc:name       → ordered output
-#   snapshot --list details        → pretty table
-#   snapshot --list -d             → shorthand for details
+#   snapshot list-snapshots
+#   snapshot list-snapshots asc:name
+#   snapshot list-snapshots details
 #
-#   ORDER arg:  asc|desc:(name|size|date)
-#
+#   ORDER:  asc|desc:(name|size|date)
 list_snapshots() {
   local arg1="${1:-}"
   local want_details=false sort_dir="desc" sort_key="date"
-  local -a filter_tags
+  local -a filter_tags=()      # ALWAYS initialise for nounset safety
 
-  # ── Parse “tag” sub-command vs. normal --list flags ──────────────────────
+  # ── argument parsing ----------------------------------------------------
   if [[ "$arg1" == "tag" ]]; then
     shift
     while (( $# )); do
       case "$1" in
-        details|-d)          want_details=true            ;;
+        details|-d)          want_details=true ;;
         asc:*|desc:*)        IFS=':' read -r sort_dir sort_key <<<"$1" ;;
-        *)                   filter_tags+=( "$1" )        ;;
+        *)                   filter_tags+=( "$1" ) ;;
       esac
       shift
     done
   else
     case "$arg1" in
-      details|-d)          want_details=true; shift     ;;
+      details|-d)          want_details=true; shift ;;
       asc:*|desc:*)        IFS=':' read -r sort_dir sort_key <<<"$arg1"; shift ;;
     esac
   fi
 
-  # ── Locate snapshot directory ─────────────────────────────────────────────
-  local local_cfg="$git_root/config.json" proj snap_dir
-  if [ -f "$local_cfg" ]; then
-    proj=$(jq -r '.project // empty' "$local_cfg")
-  fi
+  # ── locate snapshot directory ------------------------------------------
+  local_cfg="$git_root/config.json"
+  proj=""
+  if [ -f "$local_cfg" ]; then proj=$(jq -r '.project // empty' "$local_cfg"); fi
   [ -z "$proj" ] && proj=$(jq -r '.project // empty' "$global_cfg")
   [ -z "$proj" ] && proj=$(basename "$git_root")
+
   snap_dir="$cfg_default_dir/$proj"
   [ -d "$snap_dir" ] || { echo "snapshot: no snapshots for '$proj'." >&2; exit 1; }
 
-  # ── Gather all .snapshot files ───────────────────────────────────────────
   shopt -s nullglob
   mapfile -t files < <(ls -1t "$snap_dir"/*.snapshot)
   shopt -u nullglob
   [ ${#files[@]} -gt 0 ] || { echo "snapshot: no snapshot files found." >&2; exit 1; }
 
-  # ── Build raw rows: name_no_tags|branch|epoch|size_kb|tag_list ────────────
+  # ── build row list: name|branch|epoch|sizeKB|taglist --------------------
   local -a rows
   for f in "${files[@]}"; do
-    local base name_no_tags tag_part without_epoch branch commit
-    local epoch size_kb
-
     base=$(basename "$f" .snapshot)
-    if [[ "$base" == *"[]{"*"]" ]]; then
+
+    if [[ "$base" == *"__["*"]" ]]; then
       tag_part="${base##*__}"
       name_no_tags="${base%%__*}"
     elif [[ "$base" == *"__"* ]]; then
@@ -290,11 +278,11 @@ list_snapshots() {
     rows+=( "${name_no_tags}|${branch}|${epoch}|${size_kb}|${tag_part}" )
   done
 
-  # ── Filter by tags (if requested) ────────────────────────────────────────
-  if [ ${#filter_tags[@]} -gt 0 ]; then
-    local -a tmp
+  # ── optional tag filtering ---------------------------------------------
+  if (( ${#filter_tags[@]} )); then
+    local -a tmp=()
     for row in "${rows[@]}"; do
-      local tf="${row##*|}"
+      tf="${row##*|}"
       for t in "${filter_tags[@]}"; do
         [[ ",$tf," == *",$t,"* ]] && { tmp+=( "$row" ); break; }
       done
@@ -302,21 +290,21 @@ list_snapshots() {
     rows=( "${tmp[@]}" )
   fi
 
-  # ── Sort rows ─────────────────────────────────────────────────────────────
-  local field num rev
+  # ── sort rows -----------------------------------------------------------
   case "$sort_key" in
-    name) field=1; num=""  ;;
-    size) field=4; num="-n" ;;
-    date|*) field=3; num="-n" ;;
+    name) field=1; num_opt=""   ;;
+    size) field=4; num_opt="-n" ;;
+    date|*) field=3; num_opt="-n" ;;
   esac
-  [[ "$sort_dir" == desc ]] && rev="-r" || rev=""
+  rev_opt=$([[ $sort_dir == desc ]] && echo "-r" || echo "")
   IFS=$'\n' read -r -d '' -a sorted < <(
-    printf '%s\n' "${rows[@]}" | sort -t'|' $num $rev -k"$field","$field"
+    printf '%s\n' "${rows[@]}" |
+      sort -t'|' $num_opt $rev_opt -k"$field","$field" -k1,1
     printf '\0'
   )
   unset IFS
 
-  # ── Simple list mode ─────────────────────────────────────────────────────
+  # ── simple list ---------------------------------------------------------
   if ! $want_details; then
     for row in "${sorted[@]}"; do
       echo "${row%%|*}"
@@ -324,44 +312,32 @@ list_snapshots() {
     return
   fi
 
-  # ── DETAILS TABLE: compute column widths dynamically ─────────────────────
-  local h1="Snapshot"    h2="Branch"    h3="Date (UTC)"
-  local h4="Size"        h5="Tags"
-  local w1=${#h1}        w2=${#h2}      w3=${#h3}
-  local w4=${#h4}        w5=${#h5}
+  # ── detailed table ------------------------------------------------------
+  local h1="Snapshot" h2="Branch" h3="Date (UTC)" h4="Size" h5="Tags"
+  local w1=${#h1} w2=${#h2} w3=${#h3} w4=${#h4} w5=${#h5}
 
-  local row snap branch epoch size tag date_fmt size_label
   for row in "${sorted[@]}"; do
     IFS='|' read -r snap branch epoch size tag <<<"$row"
-    # Snapshot
     (( ${#snap}   > w1 )) && w1=${#snap}
-    # Branch
     (( ${#branch} > w2 )) && w2=${#branch}
-    # Date
     date_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
                || date -u -r "$epoch" +'%Y-%m-%d %H:%M:%S')
     (( ${#date_fmt} > w3 )) && w3=${#date_fmt}
-    # Size (include " KB")
-    size_label="${size} KB"
-    (( ${#size_label} > w4 )) && w4=${#size_label}
-    # Tags
-    (( ${#tag}    > w5 )) && w5=${#tag}
+    size_lbl="${size} KB"
+    (( ${#size_lbl} > w4 )) && w4=${#size_lbl}
+    (( ${#tag} > w5 )) && w5=${#tag}
   done
 
-  # ── Print header ─────────────────────────────────────────────────────────
-  local sep=" | "
+  sep=" | "
   printf "%-${w1}s${sep}%-${w2}s${sep}%-${w3}s${sep}%${w4}s${sep}%-${w5}s\n" \
          "$h1" "$h2" "$h3" "$h4" "$h5"
-
-  # ── Print divider ────────────────────────────────────────────────────────
-  printf "%s${sep}%s${sep}%s${sep}%s${sep}%s\n" \
+  printf "%-${w1}s${sep}%-${w2}s${sep}%-${w3}s${sep}%${w4}s${sep}%-${w5}s\n" \
          "$(printf '%*s' "$w1" '' | tr ' ' '-')" \
          "$(printf '%*s' "$w2" '' | tr ' ' '-')" \
          "$(printf '%*s' "$w3" '' | tr ' ' '-')" \
          "$(printf '%*s' "$w4" '' | tr ' ' '-')" \
          "$(printf '%*s' "$w5" '' | tr ' ' '-')"
 
-  # ── Print each row ───────────────────────────────────────────────────────
   for row in "${sorted[@]}"; do
     IFS='|' read -r snap branch epoch size tag <<<"$row"
     date_fmt=$(date -u -d "@$epoch" +'%Y-%m-%d %H:%M:%S' 2>/dev/null \
