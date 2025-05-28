@@ -68,18 +68,6 @@ $ bash test.sh
 ## Contributions:
 Contributions are very welcome, please read `TODO.md` for inspiration, but don't hesitate to submit a Pull Request if you have other great ideas or improvements.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 ## Disclaimer:
 
 This is my first project in bash, I'm learning at the same time. I expect the project to go through significant changes over its development.
-=======
-test
-=======
->>>>>>> 4969438 (update)
->>>>>>> 39f6832 (update)
-=======
-## Disclaimer:
-
-This is my first project in bash, I'm learning at the same time. I expect the project to go through significant changes over its development.
->>>>>>> 9e0f506 (feature/list-snapshots)
