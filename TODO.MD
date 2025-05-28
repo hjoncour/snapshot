@@ -30,7 +30,6 @@ update installed config.json version
 - install run test
 - snapshot --ignore-tests (ignore test files)
 
-
 larger refactor
 - split .sh files into folders:
     - helpers
@@ -42,3 +41,4 @@ larger refactor
 fix tag handling in name 
 
 tests to run in gha vs tests to run only locally
+ 
