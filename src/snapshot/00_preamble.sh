@@ -11,6 +11,7 @@ set -euo pipefail
 no_snapshot=false
 do_copy=false
 do_print=false
+ignore_test=false
 custom_names=()
 tags=()
 dest_dirs=()
@@ -22,7 +23,7 @@ filter_tags=()
 
 ###############################################################################
 # 1. Parse *leading* global flags
-#    (--no-snapshot, --copy, --print, --name, --tag, --to, --verbose:LEVEL)
+#    (--no-snapshot, --copy, --print, --ignore-test, --name, --tag, --to, --verbose:LEVEL))
 ###############################################################################
 while [[ "${1:-}" =~ ^-- ]]; do
   case "$1" in
@@ -35,12 +36,15 @@ while [[ "${1:-}" =~ ^-- ]]; do
     --print)         
       do_print=true;   
       shift ;;
+    --ignore-test)
+      ignore_test=true; 
+      shift ;;
     --name)
       shift
       while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
         custom_names+=("$1");
         shift
-        done ;;    
+      done ;;
       --name=*)
       custom_names+=("${1#--name=}"); shift ;;
     --tag)
