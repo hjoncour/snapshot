@@ -65,8 +65,6 @@ show_config() {
   desc=$(jq -r   '.description | @json'                "$global_cfg")
 
   types=$(jq -r '.settings.types_tracked   // [] | map(@json) | join(", ")' "$global_cfg")
-
-  # ─── NEW: extract the test-path array ──────────────────────────────────
   test_paths=$(jq -r '.settings.test_paths // [] | map(@json) | join(", ")' "$global_cfg")
 
   sep_pref=$(jq -r '.settings.preferences.separators // true'                "$global_cfg")
