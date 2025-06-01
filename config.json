@@ -8,6 +8,13 @@
       "separators": true,
       "verbose": "normal"
     },
+    "test_paths": [
+      "test/**",
+      "tests/**",
+      "**/__tests__/**",
+      "**/*.test.*",
+      "**/*_test.*"
+    ],
     "types_tracked": [
       "sh",
       "bash",

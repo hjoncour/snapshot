@@ -7,7 +7,7 @@
 #   ./test.sh local    # same as above
 #   ./test.sh GHA      # run the GitHub-Actions matrix
 #
-# You can now curate each list independently by editing the arrays below.
+# You can curate each list independently by editing the arrays below.
 ###############################################################################
 set -euo pipefail
 shopt -s nullglob
@@ -85,7 +85,7 @@ passed=()
 failed=()
 
 for t in "${tests[@]}"; do
-  if [ ! -x "$t" ]; then
+  if [ ! -f "$t" ]; then
     echo "⚠️  Skipping missing test: $t"
     continue
   fi
