@@ -6,6 +6,69 @@
 # Grab the primary command (or empty if none)
 cmd="${1:-}"; shift || true
 
+###############################################################################
+# SECOND-PASS GLOBAL FLAGS  (those written *after* the command)
+# -----------------------------------------------------------------------------
+# Mirrors the first-pass in 00_preamble.sh so users may place flags either
+# before *or* after the command word.
+###############################################################################
+while [[ "${1:-}" =~ ^-- ]]; do
+  case "$1" in
+    --no-snapshot)    no_snapshot=true;  shift ;;
+    --copy)           do_copy=true;      shift ;;
+    --print)          do_print=true;     shift ;;
+    --ignore-test)    ignore_test=true;  shift ;;
+
+    --name)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        custom_names+=( "$1" ); shift
+      done ;;
+    --name=*)         custom_names+=( "${1#--name=}" ); shift ;;
+
+    --tag)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        tags+=( "$1" ); shift
+      done ;;
+    --tag=*)          tags+=( "${1#--tag=}" ); shift ;;
+
+    --to)
+      shift
+      while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
+        dest_dirs+=( "$1" ); shift
+      done ;;
+    --to=*)           dest_dirs+=( "${1#--to=}" ); shift ;;
+
+    --verbose:*)
+      verbosity_override="${1#--verbose:}"
+      case "$verbosity_override" in
+        mute|minimal|normal|verbose|debug) ;;
+        *) echo "snapshot: use --verbose:mute|minimal|normal|verbose|debug" >&2
+           exit 2 ;;
+      esac
+      shift ;;
+    *) break ;;
+  esac
+done
+
+###############################################################################
+# APPLY TEST IGNORES (needed when --ignore-test was given *after* the command)
+###############################################################################
+if $ignore_test && [[ -z "${_IGN_APPLIED:-}" ]]; then
+  #  built-in patterns
+  builtin_test_paths=$'test/**\ntests/**\n**/__tests__/**\n**/*.test.*\n**/*_test.*'
+  #  user-configured extra patterns
+  user_test_paths=$(jq -r '.settings.test_paths[]?' "$global_cfg" 2>/dev/null || true)
+  #  merge & dedupe
+  test_paths=$(printf '%s\n%s' "$builtin_test_paths" "$user_test_paths" | awk '!a[$0]++')
+  ignore_paths=$(printf '%s\n%s' "$ignore_paths" "$test_paths" | awk '!a[$0]++')
+  _IGN_APPLIED=1               # sentinel so we do it only once
+fi
+
+###############################################################################
+# MAIN DISPATCH TABLE
+###############################################################################
 case "$cmd" in
   ###########################################################################
   # Basic helpers
@@ -34,7 +97,7 @@ case "$cmd" in
     ;;
 
   ###########################################################################
-  # Archive snapshots (NEW)
+  # Archive snapshots
   ###########################################################################
   archive|--archive)
     archive_snapshots "$@"
