@@ -34,8 +34,7 @@ jobs:
       - name: Run snapshot tests
         run: |
           chmod +x test.sh
-          bash test.sh
-
+          ./test.sh
   # ────────────────────────────────────────────────────────────────────────────
   bump-version:
     name: Auto-increment patch version

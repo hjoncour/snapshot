@@ -3,24 +3,26 @@
 # test.sh – Snapshot test-suite runner
 #
 # Usage:
-#   ./test.sh          # run the *local* test matrix   (default)
+#   ./test.sh          # run the *local* matrix   (default)
 #   ./test.sh local    # same as above
 #   ./test.sh GHA      # run the GitHub-Actions matrix
 #
-# You can curate each list independently by editing the arrays below.
+# Edit the two explicit arrays below whenever you add/rename tests so that
+# nothing slips in (or out) unnoticed.
 ###############################################################################
 set -euo pipefail
 shopt -s nullglob
 
 mode="${1:-local}"
+if [[ -n "${GITHUB_ACTIONS:-}" && "$mode" == "local" ]]; then
+  mode="GHA"
+fi
 
 ###############################################################################
 # 1. Explicit test lists
 ###############################################################################
-# • Keep them explicit so new files never sneak in unnoticed.
-# • Add / remove paths here whenever you create or rename tests.
-# --------------------------------------------------------------------------- #
 local_tests=(
+  "test/backup/test_backup_ignore_tests.sh"
   "test/backup/test_list_snapshots.sh"
   "test/backup/test_save_snapshot.sh"
   "test/backup/test_save_tags.sh"
@@ -43,6 +45,7 @@ local_tests=(
 
 # Currently identical – feel free to diverge later
 gha_tests=(
+  # "test/backup/test_backup_ignore_tests.sh" need to fix to make it work in gha
   "test/backup/test_list_snapshots.sh"
   "test/backup/test_save_snapshot.sh"
   "test/backup/test_save_tags.sh"
@@ -66,7 +69,8 @@ gha_tests=(
 case "$mode" in
   GHA|gha)   tests=("${gha_tests[@]}")   ;;
   ""|local)  tests=("${local_tests[@]}") ;;
-  *)         echo "Unknown mode '$mode'. Use 'local' (default) or 'GHA'." >&2; exit 2 ;;
+  *)         echo "Unknown mode '$mode'. Use 'local' (default) or 'GHA'." >&2
+             exit 2 ;;
 esac
 
 ###############################################################################
@@ -81,8 +85,8 @@ mkdir -p "$HOME/Library/Application Support/snapshot"
 ###############################################################################
 # 3. Execute tests
 ###############################################################################
-passed=()
-failed=()
+declare -a passed=()
+declare -a failed=()
 
 for t in "${tests[@]}"; do
   if [ ! -f "$t" ]; then
@@ -101,14 +105,21 @@ done
 ###############################################################################
 echo
 echo "──────── summary ($mode) ────────"
-for t in "${passed[@]}"; do printf '✅ %s\n' "$t"; done
-for t in "${failed[@]}"; do printf '❌ %s\n' "$t"; done
+for t in "${passed[@]}"; do
+  printf '✅ %s\n' "$t"
+done
+
+if ((${#failed[@]})); then
+  for t in "${failed[@]}"; do
+    printf '❌ %s\n' "$t"
+  done
+fi
 echo
 
 ###############################################################################
 # 5. Exit status
 ###############################################################################
-if [ "${#failed[@]}" -gt 0 ]; then
+if ((${#failed[@]})); then
   echo "❌  ${#failed[@]} test(s) failed."
   exit 1
 else
