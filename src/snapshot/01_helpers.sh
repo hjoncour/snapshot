@@ -83,7 +83,7 @@ show_config() {
   "description": $desc,
   "settings": {
     "types_tracked": [${types}],
-    "test_paths":    [${test_paths}],          // ← NEW line
+    "test_paths":    [${test_paths}],
     "preferences": {"separators": $sep_pref, "verbose": "$verb_pref"}
   },
   "ignore_file": [${ignore_files}],
