@@ -14,31 +14,31 @@ cmd="${1:-}"; shift || true
 ###############################################################################
 while [[ "${1:-}" =~ ^-- ]]; do
   case "$1" in
-    --no-snapshot)    no_snapshot=true;  shift ;;
-    --copy)           do_copy=true;      shift ;;
-    --print)          do_print=true;     shift ;;
-    --ignore-test)    ignore_test=true;  shift ;;
+    --no-snapshot)      no_snapshot=true;  shift ;;
+    --copy)             do_copy=true;      shift ;;
+    --print)            do_print=true;     shift ;;
+    --ignore-test)      ignore_test=true;  shift ;;
 
     --name)
       shift
       while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
         custom_names+=( "$1" ); shift
       done ;;
-    --name=*)         custom_names+=( "${1#--name=}" ); shift ;;
+    --name=*)           custom_names+=( "${1#--name=}" ); shift ;;
 
     --tag)
       shift
       while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
         tags+=( "$1" ); shift
       done ;;
-    --tag=*)          tags+=( "${1#--tag=}" ); shift ;;
+    --tag=*)            tags+=( "${1#--tag=}" ); shift ;;
 
     --to)
       shift
       while [[ "${1:-}" && ! "${1}" =~ ^-- ]]; do
         dest_dirs+=( "$1" ); shift
       done ;;
-    --to=*)           dest_dirs+=( "${1#--to=}" ); shift ;;
+    --to=*)             dest_dirs+=( "${1#--to=}" ); shift ;;
 
     --verbose:*)
       verbosity_override="${1#--verbose:}"
@@ -67,9 +67,46 @@ if $ignore_test && [[ -z "${_IGN_APPLIED:-}" ]]; then
 fi
 
 ###############################################################################
+# HELPER: self-update (`snapshot update`)
+###############################################################################
+update_snapshot() {
+  command -v git >/dev/null 2>&1 || {
+    echo "snapshot: 'git' is required for update (not found)." >&2; exit 1; }
+
+  # 1) $SNAPSHOT_UPDATE_URL   2) config → .update_url   3) default GitHub repo
+  local repo_url
+  repo_url="${SNAPSHOT_UPDATE_URL:-$(jq -r '.update_url // empty' "$global_cfg")}"
+  repo_url="${repo_url:-https://github.com/hugojoncour/snapshot.git}"
+
+  echo "snapshot: updating from $repo_url …"
+
+  # Hidden temp dir – lives on the same filesystem for fast copies; cleaned on EXIT
+  local tmpdir
+  tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/.snapshot_update.XXXXXX")
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  if ! git clone --quiet --depth 1 "$repo_url" "$tmpdir"; then
+    echo "snapshot: git clone failed." >&2; exit 1
+  fi
+
+  if ! (cd "$tmpdir" && bash install_snapshot.sh >/dev/null); then
+    echo "snapshot: install script failed." >&2; exit 1
+  fi
+
+  echo "snapshot: update successful."
+}
+
+###############################################################################
 # MAIN DISPATCH TABLE
 ###############################################################################
 case "$cmd" in
+  ###########################################################################
+  # NEW: self-update
+  ###########################################################################
+  update|--update)
+    update_snapshot
+    ;;
+
   ###########################################################################
   # Basic helpers
   ###########################################################################
@@ -253,20 +290,20 @@ case "$cmd" in
   ###########################################################################
   # Misc passthrough commands (unchanged)
   ###########################################################################
-  config|-c|--config)                     show_config              ;;
-  ignore|-i|--ignore)                     add_ignores "$@"         ;;
-  remove-ignore|--remove-ignore)          remove_ignores "$@"      ;;
-  remove-all-ignored|--remove-all-ignored)            remove_all_ignored      ;;
-  remove-all-ignored-paths|--remove-all-ignored-paths) remove_all_ignored_paths;;
-  remove-all-ignored-files|--remove-all-ignored-files) remove_all_ignored_files;;
-  use-gitignore|--use-gitignore)          use_gitignore            ;;
-  add-type|--add-type)                    add_types "$@"           ;;
-  remove-type|--remove-type)              remove_types "$@"        ;;
-  remove-all-types|--remove-all-types)    remove_all_types         ;;
-  add-default-types|--add-default-types)  add_default_types        ;;
+  config|-c|--config)                                     show_config              ;;
+  ignore|-i|--ignore)                                     add_ignores "$@"         ;;
+  remove-ignore|--remove-ignore)                          remove_ignores "$@"      ;;
+  remove-all-ignored|--remove-all-ignored)                remove_all_ignored      ;;
+  remove-all-ignored-paths|--remove-all-ignored-paths)    remove_all_ignored_paths;;
+  remove-all-ignored-files|--remove-all-ignored-files)    remove_all_ignored_files;;
+  use-gitignore|--use-gitignore)                          use_gitignore            ;;
+  add-type|--add-type)                                    add_types "$@"           ;;
+  remove-type|--remove-type)                              remove_types "$@"        ;;
+  remove-all-types|--remove-all-types)                    remove_all_types         ;;
+  add-default-types|--add-default-types)                  add_default_types        ;;
 
   ###########################################################################
-  # Default: dump → (optionally) copy / print / save → summarise
+  # Default: dump → (optional) copy/print → save → summary
   ###########################################################################
   "")
     raw_dump=$(dump_code)
