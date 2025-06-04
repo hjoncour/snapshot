@@ -76,7 +76,7 @@ update_snapshot() {
   # 1) $SNAPSHOT_UPDATE_URL   2) config → .update_url   3) default GitHub repo
   local repo_url
   repo_url="${SNAPSHOT_UPDATE_URL:-$(jq -r '.update_url // empty' "$global_cfg")}"
-  repo_url="${repo_url:-https://github.com/hugojoncour/snapshot.git}"
+  repo_url="${repo_url:-https://github.com/hjoncour/snapshot.git}"
 
   echo "snapshot: updating from $repo_url …"
 
