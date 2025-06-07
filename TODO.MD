@@ -38,3 +38,8 @@ larger refactor
     - ignore
     - regex
     - dispatch
+
+- Header:
+    number of files
+    number of lines
+    tree
