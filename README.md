@@ -71,3 +71,4 @@ Contributions are very welcome, please read `TODO.md` for inspiration, but don't
 ## Disclaimer:
 
 This is my first project in bash, I'm learning at the same time. I expect the project to go through significant changes over its development.
+

@@ -1,0 +1,52 @@
+.
+├── .github
+│   └── workflows
+│       └── ci.yaml
+├── .gitignore
+├── LICENSE
+├── README.md
+├── TODO.MD
+├── config.json
+├── install_snapshot.sh
+├── src
+│   ├── make_snapshot.sh
+│   └── snapshot
+│       ├── 00_preamble.sh
+│       ├── 01_helpers.sh
+│       ├── 02_git.sh
+│       ├── 03_ignore.sh
+│       ├── 04_regex.sh
+│       ├── 05_core.sh
+│       └── 06_dispatch.sh
+├── test
+│   ├── archive
+│   │   └── test_archive_all.sh.txt
+│   ├── backup
+│   │   ├── test_backup_ignore_tests.sh
+│   │   ├── test_list_snapshots.sh
+│   │   ├── test_save_snapshot.sh
+│   │   ├── test_save_tags.sh
+│   │   └── test_save_to_location.sh
+│   ├── config
+│   │   ├── test_config.sh
+│   │   ├── test_install.sh
+│   │   ├── test_projects_list.sh
+│   │   ├── test_separate_projects.sh
+│   │   ├── test_use_gitignore.sh
+│   │   └── test_verbose.sh
+│   ├── ignore
+│   │   ├── test_ignore_file.sh
+│   │   ├── test_ignore_path.sh
+│   │   └── test_remove_all_ignored_lists.sh
+│   ├── restore
+│   │   ├── test_restore_from_name.sh
+│   │   ├── test_restore_latest.sh
+│   │   └── test_restore_nth_snapshot.sh
+│   └── types
+│       ├── test_add_default_types.sh
+│       ├── test_add_remove_type.sh
+│       ├── test_remove_all_types.sh
+│       └── test_types_tracked.sh
+└── test.sh
+
+12 directories, 38 files
