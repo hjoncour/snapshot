@@ -288,6 +288,13 @@ case "$cmd" in
     ;;
 
   ###########################################################################
+  # Where am I?                                                             #
+  ###########################################################################
+  where|--where)
+    where_snapshot "$@"
+    ;;
+
+  ###########################################################################
   # Misc passthrough commands (unchanged)
   ###########################################################################
   config|-c|--config)                                     show_config              ;;
@@ -433,6 +440,7 @@ Commands:
   remove-all-types, --remove-all-types
   add-default-types, --add-default-types
   restore, --restore
+  where, --where
 projects options:
   details / --details           add Snapshots / Size / Latest columns
   asc:KEY | desc:KEY            sort by name | size | date   (asc default)
