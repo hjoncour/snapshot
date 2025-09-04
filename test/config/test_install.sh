@@ -26,8 +26,8 @@ EOF
 ###############################################################################
 # 1. run the installer
 ###############################################################################
-bash "$repo_root/install_snapshot.sh" >/dev/null
-exe="$HOME/bin/snapshot"
+bash "$repo_root/install.sh" >/dev/null
+exe="/usr/local/bin/snapshot"
 
 [ -x "$exe" ] || { echo "❌ installer failed – binary not found." >&2; exit 1; }
 

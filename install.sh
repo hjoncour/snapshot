@@ -21,7 +21,7 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "Error: run the installer from inside the snapshot repo." >&2; exit 1; }
 
 src_dir="$repo_root/src"
-dest_dir="$HOME/bin"
+dest_dir="/usr/local/bin"
 dest="$dest_dir/snapshot"
 
 cfg_dir="$HOME/Library/Application Support/snapshot"
@@ -31,15 +31,16 @@ template_cfg="$repo_root/config.json"
 ###############################################################################
 # 1. Install / overwrite the executable
 ###############################################################################
-mkdir -p "$dest_dir"
-bash "$src_dir/make_snapshot.sh" > "$dest"
-chmod +x "$dest"
+sudo mkdir -p "$dest_dir"
+bash "$src_dir/make_snapshot.sh" | sudo tee "$dest" > /dev/null
+sudo chmod +x "$dest"
 echo "✅ Installed snapshot → $dest"
 
 ###############################################################################
 # 2. Merge or create the global configuration
 ###############################################################################
 mkdir -p "$cfg_dir"
+sudo chown -R "$(whoami)" "$cfg_dir"
 new_version="$(jq -r '.version' "$template_cfg")"
 
 merge_cfg() {

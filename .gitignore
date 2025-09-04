@@ -172,3 +172,5 @@ cython_debug/
 
 # aws
 .aws-sam
+
+.DS_Store
