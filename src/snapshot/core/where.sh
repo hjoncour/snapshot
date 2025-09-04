@@ -8,7 +8,5 @@
 
 where_snapshot() {
   echo "snapshot: $cfg_default_dir"
-  echo "snapshot: $SNAPSHOT_DIR"
+  echo "snapshot: /usr/local/bin"
 }
-
-where_snapshot "$@"

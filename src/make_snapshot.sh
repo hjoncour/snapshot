@@ -17,6 +17,7 @@ modules=(
   "$dir/core/restore.sh"
   "$dir/core/archive.sh"
   "$dir/core/list.sh"
+  "$dir/core/where.sh"
   "$dir/dispatch.sh"
 )
 
